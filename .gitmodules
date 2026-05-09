@@ -1,0 +1,12 @@
+[submodule "docs/examples"]
+	path = docs/examples
+	url = git@github.com:zuzuscript/examples.git
+[submodule "docs/userguide"]
+	path = docs/userguide
+	url = git@github.com:zuzuscript/userguide.git
+[submodule "stdlib"]
+	path = stdlib
+	url = git@github.com:zuzuscript/stdlib.git
+[submodule "languagetests"]
+	path = languagetests
+	url = git@github.com:zuzuscript/languagetests.git
