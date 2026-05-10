@@ -1323,8 +1323,28 @@ mod tests {
         time::Duration,
     };
 
+    static TEMP_FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
     fn response(status: HostValue, headers: HostValue, body: HostValue) -> HostValue {
         HostValue::Array(vec![status, headers, body])
+    }
+
+    fn write_web_temp_file(name: &str, contents: &[u8]) -> PathBuf {
+        let id = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("zuzu-rust-web-test-{}-{id}", std::process::id()));
+        let path = dir.join(name);
+
+        fs::create_dir_all(&dir).expect("web test temp directory should be created");
+        fs::write(&path, contents).expect("web test temp file should be written");
+
+        path
+    }
+
+    fn zuzu_path_literal(path: &Path) -> String {
+        path.to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
     }
 
     fn empty_headers() -> HostValue {
@@ -2551,20 +2571,19 @@ mod tests {
 
     #[tokio::test]
     async fn http_server_serves_path_body_from_repo_relative_path() {
-        let mut pool_config = WebAppPoolConfig::default();
-        pool_config.module_roots = repo_module_roots();
-        let (server, base_url, records) = start_logged_http_server(
-            r#"
+        let fixture = write_web_temp_file("web-server-sketch.txt", b"zuzu static body\n");
+        let source = r#"
             from std/io import Path;
 
             function __request__ ( env ) {
-                return [ 203, {{}}, new Path("docs/web-server-sketch.txt") ];
+                return [ 203, {{}}, new Path("@PATH@") ];
             }
-            "#,
-            1_048_576,
-            pool_config,
-        )
-        .await;
+            "#
+        .replace("@PATH@", &zuzu_path_literal(&fixture));
+        let mut pool_config = WebAppPoolConfig::default();
+        pool_config.module_roots = repo_module_roots();
+        let (server, base_url, records) =
+            start_logged_http_server(&source, 1_048_576, pool_config).await;
 
         let response = reqwest::get(format!("{base_url}/static"))
             .await
@@ -2580,8 +2599,7 @@ mod tests {
             .await
             .expect("static body should be readable")
             .to_vec();
-        let expected = fs::read(repo_root().join("docs/web-server-sketch.txt"))
-            .expect("fixture file should be readable");
+        let expected = fs::read(&fixture).expect("fixture file should be readable");
 
         assert_eq!(status, 203);
         assert_eq!(body, expected);
@@ -2599,24 +2617,23 @@ mod tests {
 
     #[tokio::test]
     async fn http_server_preserves_explicit_content_type_for_path_body() {
-        let mut pool_config = WebAppPoolConfig::default();
-        pool_config.module_roots = repo_module_roots();
-        let (server, base_url, _records) = start_logged_http_server(
-            r#"
+        let fixture = write_web_temp_file("web-server-sketch.txt", b"zuzu static body\n");
+        let source = r#"
             from std/io import Path;
 
             function __request__ ( env ) {
                 return [
                     200,
                     { "content-type": "application/x-zuzu-test" },
-                    new Path("docs/web-server-sketch.txt"),
+                    new Path("@PATH@"),
                 ];
             }
-            "#,
-            1_048_576,
-            pool_config,
-        )
-        .await;
+            "#
+        .replace("@PATH@", &zuzu_path_literal(&fixture));
+        let mut pool_config = WebAppPoolConfig::default();
+        pool_config.module_roots = repo_module_roots();
+        let (server, base_url, _records) =
+            start_logged_http_server(&source, 1_048_576, pool_config).await;
 
         let response = reqwest::get(format!("{base_url}/explicit-content-type"))
             .await

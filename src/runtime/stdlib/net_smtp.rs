@@ -540,7 +540,10 @@ fn smtp_authenticate(
         }
         "xoauth2" => {
             let token = format!("user={username}\x01auth=Bearer {password}\x01\x01");
-            let response = command(stream, &format!("AUTH XOAUTH2 {}", base64(token.as_bytes())))?;
+            let response = command(
+                stream,
+                &format!("AUTH XOAUTH2 {}", base64(token.as_bytes())),
+            )?;
             expect_code("mail.auth", &response, &[235], "AUTH XOAUTH2")
         }
         _ => unreachable!(),
@@ -1075,8 +1078,7 @@ fn render_string(value: &Value) -> String {
 }
 
 fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
     let mut i = 0;
     while i < bytes.len() {

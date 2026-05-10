@@ -110,6 +110,7 @@ pub(super) fn repo_root(runtime: &Runtime) -> PathBuf {
     if let Ok(mut current) = std::env::current_dir() {
         loop {
             if current.join("modules").join("std").is_dir()
+                || current.join("modules").is_dir()
                 || current.join("stdlib").join("modules").join("std").is_dir()
             {
                 return current;
@@ -144,8 +145,31 @@ pub(super) fn resolve_fs_path(runtime: &Runtime, path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
-        repo_root(runtime).join(path)
+        let root = repo_root(runtime);
+        if let Some(path) = split_repo_legacy_fixture_path(&root, path) {
+            path
+        } else {
+            root.join(path)
+        }
     }
+}
+
+fn split_repo_legacy_fixture_path(repo_root: &Path, path: &Path) -> Option<PathBuf> {
+    if repo_root.join("t").join("fixtures").exists() {
+        return None;
+    }
+
+    let relative = path.strip_prefix("t").ok()?.strip_prefix("fixtures").ok()?;
+    Some(
+        repo_root
+            .join("stdlib")
+            .join("test-fixtures")
+            .join(relative),
+    )
+}
+
+fn io_path_error(path: &Path, err: std::io::Error) -> ZuzuRustError {
+    ZuzuRustError::runtime(format!("IOError: {}: {err}", path.display()))
 }
 
 fn path_cursor_key(path: &Path, raw: bool) -> String {
@@ -566,14 +590,14 @@ pub(super) fn call_object_method(
             warn_blocking_path_operation(runtime, "copy")?;
             let target = path_buf_from_value(&args[0]);
             let target_fs = resolve_fs_path(runtime, &target);
-            let _ = fs::copy(&fs_path, &target_fs);
+            fs::copy(&fs_path, &target_fs).map_err(|err| io_path_error(&target_fs, err))?;
             Ok(path_object(target))
         }),
         "move" => require_arity(name, args, 1).and_then(|_| {
             warn_blocking_path_operation(runtime, "move")?;
             let target = path_buf_from_value(&args[0]);
             let target_fs = resolve_fs_path(runtime, &target);
-            let _ = fs::rename(&fs_path, &target_fs);
+            fs::rename(&fs_path, &target_fs).map_err(|err| io_path_error(&target_fs, err))?;
             Ok(path_object(target))
         }),
         "remove" => require_arity(name, args, 0).and_then(|_| {
@@ -598,8 +622,7 @@ pub(super) fn call_object_method(
                         ))
                     } else {
                         warn_blocking_path_operation(runtime, "spew_utf8")?;
-                        fs::write(&fs_path, text)
-                            .map_err(|err| ZuzuRustError::runtime(format!("IOError: {err}")))?;
+                        fs::write(&fs_path, text).map_err(|err| io_path_error(&fs_path, err))?;
                         Ok(Value::Null)
                     }
                 }
@@ -635,10 +658,10 @@ pub(super) fn call_object_method(
                             .create(true)
                             .append(true)
                             .open(&fs_path)
-                            .map_err(|err| ZuzuRustError::runtime(format!("IOError: {err}")))?;
+                            .map_err(|err| io_path_error(&fs_path, err))?;
                         use std::io::Write;
                         file.write_all(text.as_bytes())
-                            .map_err(|err| ZuzuRustError::runtime(format!("IOError: {err}")))?;
+                            .map_err(|err| io_path_error(&fs_path, err))?;
                         Ok(Value::Null)
                     }
                 }
@@ -659,8 +682,7 @@ pub(super) fn call_object_method(
                     ))
                 } else {
                     warn_blocking_path_operation(runtime, "spew")?;
-                    fs::write(&fs_path, bytes)
-                        .map_err(|err| ZuzuRustError::runtime(format!("IOError: {err}")))?;
+                    fs::write(&fs_path, bytes).map_err(|err| io_path_error(&fs_path, err))?;
                     Ok(Value::Null)
                 }
             }

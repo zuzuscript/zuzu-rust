@@ -5,10 +5,6 @@ use zuzu_rust::{codegen, parse_program_with_compile_options, OptimizationOptions
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf()
 }
 
 fn run_zuzu(args: &[&str], cwd: &Path) -> std::process::Output {

@@ -55,6 +55,10 @@ fn host_dict(items: Vec<(&str, HostValue)>) -> HostValue {
     )
 }
 
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
 #[test]
 fn loads_program_without_main_and_exposes_request_function() {
     let runtime = Runtime::new(Vec::new());
@@ -102,11 +106,7 @@ fn load_program_without_main_does_not_call_main() {
 
 #[test]
 fn load_program_without_main_allows_top_level_imports() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
     let program = parse_program(
         r#"
@@ -294,12 +294,8 @@ fn host_value_call_rejects_unsupported_return_value() {
 
 #[test]
 fn runs_basic_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/basic.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/basic.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -328,12 +324,8 @@ fn runs_basic_ztest_script() {
 
 #[test]
 fn runs_collection_operator_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/operators/collection-operators.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/operators/collection-operators.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -391,11 +383,7 @@ fn system_inc_exposes_colon_delimited_module_roots() {
 
 #[test]
 fn from_repo_root_system_inc_includes_default_module_dirs() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -415,11 +403,7 @@ fn from_repo_root_system_inc_includes_default_module_dirs() {
 
 #[test]
 fn outer_execution_continues_after_inner_block_scope_ends() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -446,11 +430,7 @@ fn outer_execution_continues_after_inner_block_scope_ends() {
 
 #[test]
 fn zero_arg_dot_syntax_invokes_method_instead_of_reading_property() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -469,12 +449,8 @@ fn zero_arg_dot_syntax_invokes_method_instead_of_reading_property() {
 
 #[test]
 fn runs_string_more_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/operators/string-more.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/operators/string-more.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -514,12 +490,8 @@ fn runs_string_more_ztest_script() {
 
 #[test]
 fn runs_function_signatures_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/functions/signatures.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/functions/signatures.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -545,12 +517,8 @@ fn runs_function_signatures_ztest_script() {
 
 #[test]
 fn runs_lambda_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/functions/lambdas.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/functions/lambdas.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -574,11 +542,7 @@ fn runs_lambda_ztest_script() {
 
 #[test]
 fn std_path_z_query_helpers_keep_full_nodesets() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -613,11 +577,7 @@ fn std_path_z_query_helpers_keep_full_nodesets() {
 
 #[test]
 fn std_string_chr_ord_roundtrip_unicode_scalars() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -637,13 +597,9 @@ fn std_string_chr_ord_roundtrip_unicode_scalars() {
 
 #[test]
 fn runs_switch_ztest_scripts() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let switch_output = Runtime::from_repo_root(&repo_root)
-        .run_script_file(&repo_root.join("t/ztests/lang/control/switch.zzs"))
+        .run_script_file(&repo_root.join("languagetests/lang/control/switch.zzs"))
         .expect("switch.zzs should execute successfully");
     assert_eq!(
         switch_output.stdout,
@@ -656,7 +612,7 @@ fn runs_switch_ztest_scripts() {
     );
 
     let more_output = Runtime::from_repo_root(&repo_root)
-        .run_script_file(&repo_root.join("t/ztests/lang/control/switch-more.zzs"))
+        .run_script_file(&repo_root.join("languagetests/lang/control/switch-more.zzs"))
         .expect("switch-more.zzs should execute successfully");
     assert_eq!(
         more_output.stdout,
@@ -672,12 +628,8 @@ fn runs_switch_ztest_scripts() {
 
 #[test]
 fn runs_loops_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/control/loops.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/control/loops.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -706,12 +658,8 @@ fn runs_loops_ztest_script() {
 
 #[test]
 fn runs_phase_a_concurrency_contract_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/concurrency/phase-a.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/concurrency/phase-a.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -738,11 +686,7 @@ fn runs_phase_a_concurrency_contract_ztest_script() {
 
 #[test]
 fn timeout_task_expires_while_executor_runs_unrelated_sleep() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -794,11 +738,7 @@ fn timeout_task_expires_while_executor_runs_unrelated_sleep() {
 
 #[test]
 fn await_rejects_non_task_block_result() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let err = match runtime.run_script_source(
@@ -826,11 +766,7 @@ fn await_rejects_non_task_block_result() {
 
 #[test]
 fn sleep_tasks_overlap_under_task_all() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
 
     let single_runtime = Runtime::from_repo_root(&repo_root);
     let single_start = Instant::now();
@@ -879,11 +815,7 @@ fn sleep_tasks_overlap_under_task_all() {
 
 #[test]
 fn run_async_processes_overlap_under_task_all() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
 
     let single_runtime = Runtime::from_repo_root(&repo_root);
     let single_start = Instant::now();
@@ -944,11 +876,7 @@ fn run_async_processes_overlap_under_task_all() {
 
 #[test]
 fn pipeline_async_streams_between_running_processes() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let start = Instant::now();
@@ -990,11 +918,7 @@ fn pipeline_async_streams_between_running_processes() {
 
 #[test]
 fn run_async_timeout_and_combinator_cancellation() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1055,11 +979,7 @@ fn run_async_timeout_and_combinator_cancellation() {
 
 #[test]
 fn get_async_requests_overlap_under_task_all() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let Some((base_url, server)) = spawn_delayed_http_server(Duration::from_millis(120), 3) else {
         eprintln!("skipping get_async overlap test: local socket bind is not permitted");
         return;
@@ -1118,11 +1038,7 @@ fn get_async_requests_overlap_under_task_all() {
 
 #[test]
 fn path_async_methods_return_pending_tasks() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1187,11 +1103,7 @@ fn path_async_methods_return_pending_tasks() {
 
 #[test]
 fn native_async_tasks_cancel_with_cancelled_exception() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1211,7 +1123,7 @@ fn native_async_tasks_cancel_with_cancelled_exception() {
                     };
                 }
                 catch ( CancelledException e ) {
-                    return e.to_String() = reason;
+                    return e.message = reason;
                 }
                 return false;
             }
@@ -1276,11 +1188,7 @@ fn native_async_tasks_cancel_with_cancelled_exception() {
 
 #[test]
 fn debug_mode_warns_for_blocking_sync_apis_inside_async_tasks() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
 
     let runtime =
         Runtime::from_repo_root_with_policy(&repo_root, RuntimePolicy::new().debug_level(1));
@@ -1323,12 +1231,8 @@ fn debug_mode_warns_for_blocking_sync_apis_inside_async_tasks() {
 
 #[test]
 fn runs_named_args_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/functions/named-args.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/functions/named-args.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1351,12 +1255,8 @@ fn runs_named_args_ztest_script() {
 
 #[test]
 fn runs_field_accessors_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/oop/field-accessors.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/oop/field-accessors.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1380,12 +1280,8 @@ fn runs_field_accessors_ztest_script() {
 
 #[test]
 fn runs_assignment_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/operators/assignment.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/operators/assignment.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1429,11 +1325,7 @@ fn runs_assignment_ztest_script() {
 
 #[test]
 fn weak_storage_declarations_assignments_and_fields_work() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -1523,12 +1415,8 @@ fn weak_storage_declarations_assignments_and_fields_work() {
 
 #[test]
 fn runs_weak_collection_methods_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/weak/collection-methods.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/weak/collection-methods.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1546,11 +1434,7 @@ fn runs_weak_collection_methods_ztest_script() {
 
 #[test]
 fn weak_collection_methods_drop_and_overwrite_entries() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -1650,47 +1534,31 @@ fn weak_collection_methods_drop_and_overwrite_entries() {
 
 #[test]
 fn runs_binary_string_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/operators/binary-string.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/operators/binary-string.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
         .run_script_file(&script)
         .expect("binary-string.zzs should execute successfully");
 
-    assert_eq!(
-        output.stdout,
-        concat!(
-            "ok 1 - BinaryString _ BinaryString stays binary\n",
-            "ok 2 - String and ASCII BinaryString concatenate safely\n",
-            "ok 3 - non-ASCII BinaryString concat with String is rejected\n",
-            "ok 4 - bitwise and on binary returns BinaryString\n",
-            "ok 5 - bitwise and is bytewise\n",
-            "ok 6 - bitwise or is bytewise\n",
-            "ok 7 - bitwise xor is bytewise\n",
-            "ok 8 - unary bitwise not keeps binary length\n",
-            "ok 9 - numeric bitwise and still works\n",
-            "ok 10 - numeric bitwise or still works\n",
-            "ok 11 - numeric bitwise xor still works\n",
-            "ok 12 - numeric unary bitwise not still returns Number\n",
-            "1..12\n",
-        ),
+    assert!(
+        output.stdout.contains("1..28\n"),
+        "got TAP output:\n{}",
+        output.stdout
+    );
+    assert!(
+        !output.stdout.contains("not ok"),
+        "got failing TAP:\n{}",
+        output.stdout
     );
     assert_eq!(output.stderr, "");
 }
 
 #[test]
 fn runs_type_instanceof_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/types/instanceof.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/types/instanceof.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1706,12 +1574,8 @@ fn runs_type_instanceof_ztest_script() {
 
 #[test]
 fn runs_type_return_types_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/types/return-types.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/types/return-types.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1734,12 +1598,8 @@ fn runs_type_return_types_ztest_script() {
 
 #[test]
 fn runs_type_tostring_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/types/tostring.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/types/tostring.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1758,12 +1618,8 @@ fn runs_type_tostring_ztest_script() {
 
 #[test]
 fn runs_oop_dynamic_member_call_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/oop/dynamic-member-call.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/oop/dynamic-member-call.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1782,12 +1638,8 @@ fn runs_oop_dynamic_member_call_ztest_script() {
 
 #[test]
 fn runs_oop_inheritance_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/oop/inheritance.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/oop/inheritance.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1807,12 +1659,8 @@ fn runs_oop_inheritance_ztest_script() {
 
 #[test]
 fn runs_oop_traits_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/oop/traits.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/oop/traits.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1837,12 +1685,8 @@ fn runs_oop_traits_ztest_script() {
 
 #[test]
 fn runs_oop_ambiguous_classes_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/oop/ambiguous-classes.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/oop/ambiguous-classes.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1861,12 +1705,8 @@ fn runs_oop_ambiguous_classes_ztest_script() {
 
 #[test]
 fn runs_oop_super_and_static_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/lang/oop/super-and-static.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/oop/super-and-static.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1887,12 +1727,8 @@ fn runs_oop_super_and_static_ztest_script() {
 
 #[test]
 fn runs_std_clib_ztest_script() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
-    let script = repo_root.join("t/ztests/std/clib.zzs");
+    let repo_root = repo_root();
+    let script = repo_root.join("stdlib/tests/std/clib.zzs");
 
     let runtime = Runtime::from_repo_root(&repo_root);
     let output = runtime
@@ -1941,7 +1777,7 @@ fn std_clib_close_invalidates_bound_functions() {
         r#"
             from std/clib import CLib;
 
-            let lib := CLib.open("t/fixtures/example_clib/libgreet.so");
+            let lib := CLib.open("stdlib/test-fixtures/example_clib/libgreet.so");
             let greet := lib.func(
                 "greet",
                 [],
@@ -1964,7 +1800,7 @@ fn std_clib_close_invalidates_symbol_lookup() {
         r#"
             from std/clib import CLib;
 
-            let lib := CLib.open("t/fixtures/example_clib/libgreet.so");
+            let lib := CLib.open("stdlib/test-fixtures/example_clib/libgreet.so");
             lib.close();
             lib.has_symbol("greet");
             "#,
@@ -1978,7 +1814,7 @@ fn std_clib_reports_binding_descriptor_and_call_errors() {
         r#"
             from std/clib import CLib;
 
-            let lib := CLib.open("t/fixtures/example_clib/libgreet.so");
+            let lib := CLib.open("stdlib/test-fixtures/example_clib/libgreet.so");
             lib.func("not_a_symbol", [], "null");
             "#,
         "Could not bind C symbol 'not_a_symbol'",
@@ -1987,7 +1823,7 @@ fn std_clib_reports_binding_descriptor_and_call_errors() {
         r#"
             from std/clib import CLib;
 
-            let lib := CLib.open("t/fixtures/example_clib/libgreet.so");
+            let lib := CLib.open("stdlib/test-fixtures/example_clib/libgreet.so");
             lib.func("greet_add_i64", [ { type: "int", bits: 32 } ], "null");
             "#,
         "parameter 0 int descriptor only supports bits=64",
@@ -1996,7 +1832,7 @@ fn std_clib_reports_binding_descriptor_and_call_errors() {
         r#"
             from std/clib import CLib;
 
-            let lib := CLib.open("t/fixtures/example_clib/libgreet.so");
+            let lib := CLib.open("stdlib/test-fixtures/example_clib/libgreet.so");
             let greet := lib.func(
                 "greet",
                 [],
@@ -2014,7 +1850,7 @@ fn std_clib_reports_binding_descriptor_and_call_errors() {
         r#"
             from std/clib import CLib;
 
-            let lib := CLib.open("t/fixtures/example_clib/libgreet.so");
+            let lib := CLib.open("stdlib/test-fixtures/example_clib/libgreet.so");
             let bool_not := lib.func("greet_not", [ "bool" ], "bool");
             bool_not.call(1);
             "#,
@@ -2023,11 +1859,7 @@ fn std_clib_reports_binding_descriptor_and_call_errors() {
 }
 
 fn assert_std_clib_source_error(source: &str, needle: &str) {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let err = match runtime.run_script_source(source) {
@@ -2042,11 +1874,7 @@ fn assert_std_clib_source_error(source: &str, needle: &str) {
 
 #[test]
 fn std_marshal_exports_public_api_and_exceptions() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -2120,11 +1948,7 @@ fn std_marshal_exports_public_api_and_exceptions() {
 
 #[test]
 fn std_marshal_round_trips_phase25_data_graphs() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -2198,11 +2022,7 @@ fn std_marshal_round_trips_phase25_data_graphs() {
 
 #[test]
 fn std_marshal_preserves_weak_storage_records() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime
@@ -2254,11 +2074,7 @@ fn std_marshal_preserves_weak_storage_records() {
 
 #[test]
 fn std_marshal_round_trips_user_objects_and_lifecycle_hooks() {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf();
+    let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
     let output = runtime

@@ -5,15 +5,15 @@ use zuzu_rust::Runtime;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf()
 }
 
 fn test_runtime() -> Runtime {
     let repo_root = repo_root();
-    Runtime::new(vec![repo_root.join("t/modules"), repo_root.join("modules")])
+    Runtime::new(vec![
+        repo_root.join("stdlib").join("test-modules"),
+        repo_root.join("modules"),
+        repo_root.join("stdlib").join("modules"),
+    ])
 }
 
 #[test]

@@ -19,10 +19,6 @@ fn optimization_options(level: OptimizationLevel) -> OptimizationOptions {
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf()
 }
 
 #[test]
@@ -407,9 +403,9 @@ fn optimizer_sensitive_stdlib_round_trips_pass_at_default_level() {
     let root = repo_root();
 
     for relative in [
-        "t/ztests/std/path/z.zzs",
-        "t/ztests/std/data/cbor/_loaddump.zzs",
-        "t/ztests/std/data/kdl/_loaddump.zzs",
+        "stdlib/tests/std/path/z.zzs",
+        "stdlib/tests/std/data/cbor/_loaddump.zzs",
+        "stdlib/tests/std/data/kdl/_loaddump.zzs",
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_zuzu-rust"))
             .arg(root.join(relative))

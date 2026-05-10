@@ -6,10 +6,6 @@ use std::time::{Duration, Instant};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf()
 }
 
 fn temp_dir(name: &str) -> PathBuf {

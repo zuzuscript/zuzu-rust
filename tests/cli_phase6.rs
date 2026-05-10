@@ -5,10 +5,6 @@ use std::process::{Command, Stdio};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|path| path.parent())
-        .expect("repo root should exist")
-        .to_path_buf()
 }
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -310,11 +306,11 @@ fn cli_uses_include_dirs_for_module_search() {
 fn cli_include_dir_does_not_move_repo_relative_paths() {
     let output = run_zuzu(
         &[
-            "-It/modules",
+            "-Istdlib/test-modules",
             "-e",
             r#"
             from std/io import Path;
-            let files := Path.glob("t/fixtures/toon/decode/*.json");
+            let files := Path.glob("stdlib/test-fixtures/toon/decode/*.json");
             say files.length() > 0 ? "found" : "missing";
             "#,
         ],
@@ -458,7 +454,7 @@ fn cli_deny_gui_allows_dialogue_tui_fallbacks() {
                 "say(prompt(\"Name:\", auto_result: \"Ada\")); ",
                 "say(file_open(auto_result: \"x.txt\")); ",
                 "from std/tui import filename_completions; ",
-                "say(filename_completions(\"modules/std/tu\").length() > 0);"
+                "say(filename_completions(\"stdlib/modules/std/tu\").length() > 0);"
             ),
         ],
         &repo_root(),

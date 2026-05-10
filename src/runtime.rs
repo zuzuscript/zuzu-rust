@@ -7378,8 +7378,13 @@ impl Runtime {
     }
 
     fn compile_regex(&self, pattern: &str, flags: &str) -> Result<Regex> {
+        let compiled_pattern = if simple_negative_contains_regex(pattern).is_some() {
+            "^"
+        } else {
+            pattern
+        };
         if !self.optimizations.enables(OptimizationPass::RegexCache) {
-            return RegexBuilder::new(pattern)
+            return RegexBuilder::new(compiled_pattern)
                 .case_insensitive(flags.contains('i'))
                 .build()
                 .map_err(|err| ZuzuRustError::runtime(format!("invalid regexp: {err}")));
@@ -7388,7 +7393,7 @@ impl Runtime {
         if let Some(regex) = self.regex_cache.borrow().get(&key) {
             return Ok(regex.clone());
         }
-        RegexBuilder::new(pattern)
+        RegexBuilder::new(compiled_pattern)
             .case_insensitive(flags.contains('i'))
             .build()
             .map_err(|err| ZuzuRustError::runtime(format!("invalid regexp: {err}")))
@@ -7408,6 +7413,19 @@ impl Runtime {
 
     fn eval_regex_match(&self, target: &str, regex: &Value) -> Result<Value> {
         let (pattern, flags) = self.coerce_regex_operand(regex)?;
+        if let Some(needle) = simple_negative_contains_regex(&pattern) {
+            let matched = if flags.contains('i') {
+                !target.to_lowercase().contains(&needle.to_lowercase())
+            } else {
+                !target.contains(needle)
+            };
+            return if matched {
+                Ok(Value::Array(vec![Value::String(String::new())]))
+            } else {
+                Ok(Value::Boolean(false))
+            };
+        }
+
         let compiled = self.compile_regex(&pattern, &flags)?;
         if flags.contains('g') {
             let mut all = Vec::new();
@@ -7434,6 +7452,12 @@ impl Runtime {
             Ok(Value::Boolean(false))
         }
     }
+}
+
+fn simple_negative_contains_regex(pattern: &str) -> Option<&str> {
+    pattern
+        .strip_prefix("^(?!.*")
+        .and_then(|rest| rest.strip_suffix(')'))
 }
 
 impl ReplSession<'_> {

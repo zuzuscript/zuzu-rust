@@ -1,9 +1,11 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Output};
 
 use zuzu_rust::Runtime;
+
+const RUN_ONE_ARG: &str = "--__zuzu-rust-run-one";
 
 fn main() -> ExitCode {
     match run() {
@@ -23,11 +25,17 @@ fn main() -> ExitCode {
 
 fn run() -> Result<bool, String> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some(RUN_ONE_ARG) {
+        return run_one(
+            args.get(1)
+                .ok_or_else(|| format!("usage: zuzu-rust-run-tests {RUN_ONE_ARG} <test-file>"))?,
+        );
+    }
+
     if args.is_empty() {
         return Err("usage: zuzu-rust-run-tests <test-file-or-directory> [...]".to_owned());
     }
 
-    let repo_root = find_repo_root(&env::current_dir().map_err(|err| err.to_string())?)?;
     let mut files = Vec::new();
     for arg in &args {
         collect_targets(Path::new(arg), &mut files)?;
@@ -41,17 +49,18 @@ fn run() -> Result<bool, String> {
 
     for file in files {
         let display = file.display().to_string();
-        let runtime = Runtime::new(test_module_roots(&repo_root));
-        match runtime.run_script_file(&file) {
-            Ok(output) if tap_passed(&output.stdout) => {
-                println!("✅  {display}");
-                passed += 1;
-            }
-            Ok(_) | Err(_) => {
-                println!("❌  {display}");
-                failed += 1;
-                all_ok = false;
-            }
+        let output = run_test_child(&file)?;
+        print!("{}", String::from_utf8_lossy(&output.stdout));
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if output.status.success() && tap_passed(&stdout) {
+            println!("✅  {display}");
+            passed += 1;
+        } else {
+            println!("❌  {display}");
+            failed += 1;
+            all_ok = false;
         }
     }
 
@@ -64,6 +73,26 @@ fn run() -> Result<bool, String> {
     }
 
     Ok(all_ok)
+}
+
+fn run_one(file: &str) -> Result<bool, String> {
+    let repo_root = find_repo_root(&env::current_dir().map_err(|err| err.to_string())?)?;
+    let runtime = Runtime::new(test_module_roots(&repo_root));
+    match runtime.run_script_file(Path::new(file)) {
+        Ok(output) => Ok(tap_passed(&output.stdout)),
+        Err(err) => {
+            eprintln!("{err}");
+            Ok(false)
+        }
+    }
+}
+
+fn run_test_child(file: &Path) -> Result<Output, String> {
+    Command::new(env::current_exe().map_err(|err| err.to_string())?)
+        .arg(RUN_ONE_ARG)
+        .arg(file)
+        .output()
+        .map_err(|err| format!("failed to run {}: {err}", file.display()))
 }
 
 fn test_module_roots(repo_root: &Path) -> Vec<PathBuf> {
