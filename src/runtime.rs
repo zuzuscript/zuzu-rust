@@ -605,6 +605,7 @@ impl Runtime {
         }
         module_roots.push(PathBuf::from("/var/lib/zuzu/modules"));
         module_roots.push(repo_root.join("modules"));
+        module_roots.push(repo_root.join("stdlib").join("modules"));
         Self::new(module_roots)
     }
 
@@ -615,6 +616,7 @@ impl Runtime {
         }
         module_roots.push(PathBuf::from("/var/lib/zuzu/modules"));
         module_roots.push(repo_root.join("modules"));
+        module_roots.push(repo_root.join("stdlib").join("modules"));
         Self::with_policy(module_roots, policy)
     }
 

@@ -870,7 +870,9 @@ fn resolve_web_fs_path(module_roots: &[PathBuf], path: &Path) -> PathBuf {
 fn web_repo_root(module_roots: &[PathBuf]) -> PathBuf {
     if let Ok(mut current) = std::env::current_dir() {
         loop {
-            if current.join("modules").join("std").is_dir() {
+            if current.join("modules").join("std").is_dir()
+                || current.join("stdlib").join("modules").join("std").is_dir()
+            {
                 return current;
             }
             if !current.pop() {
@@ -882,6 +884,11 @@ fn web_repo_root(module_roots: &[PathBuf]) -> PathBuf {
     for module_root in module_roots {
         if module_root.join("std").is_dir() {
             if let Some(root) = module_root.parent() {
+                if root.file_name().and_then(|name| name.to_str()) == Some("stdlib") {
+                    if let Some(project_root) = root.parent() {
+                        return project_root.to_path_buf();
+                    }
+                }
                 return root.to_path_buf();
             }
         }
@@ -1376,15 +1383,14 @@ mod tests {
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(|path| path.parent())
-            .expect("repo root should exist")
-            .to_path_buf()
     }
 
     fn repo_module_roots() -> Vec<PathBuf> {
         let repo_root = repo_root();
-        vec![repo_root.join("modules")]
+        vec![
+            repo_root.join("modules"),
+            repo_root.join("stdlib").join("modules"),
+        ]
     }
 
     fn logged_http_config(

@@ -337,13 +337,9 @@ mod tests {
     use super::*;
 
     fn fixture_bytes(name: &str) -> Vec<u8> {
-        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(|path| path.parent())
-            .expect("repo root should exist")
-            .to_path_buf();
+        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let path = repo_root
-            .join("t/fixtures/marshal/golden")
+            .join("stdlib/test-fixtures/marshal/golden")
             .join(format!("{name}.b64"));
         decode_base64(
             &std::fs::read_to_string(path).expect("marshal golden fixture should be readable"),

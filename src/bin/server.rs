@@ -439,6 +439,7 @@ fn module_roots(repo_root: &Path, include_dirs: Vec<PathBuf>) -> Vec<PathBuf> {
     }
     roots.push(PathBuf::from("/var/lib/zuzu/modules"));
     roots.push(repo_root.join("modules"));
+    roots.push(repo_root.join("stdlib").join("modules"));
     dedup_paths(roots)
 }
 
@@ -460,7 +461,7 @@ fn find_repo_root(start: &Path) -> io::Result<PathBuf> {
         start.to_path_buf()
     };
     loop {
-        if current.join("modules").is_dir() && current.join("extras/zuzu-rust").is_dir() {
+        if current.join("modules").is_dir() || current.join("stdlib").join("modules").is_dir() {
             return Ok(current);
         }
         if !current.pop() {

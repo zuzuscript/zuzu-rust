@@ -67,7 +67,12 @@ fn run() -> Result<bool, String> {
 }
 
 fn test_module_roots(repo_root: &Path) -> Vec<PathBuf> {
-    vec![repo_root.join("t/modules"), repo_root.join("modules")]
+    vec![
+        repo_root.join("t/modules"),
+        repo_root.join("stdlib").join("test-modules"),
+        repo_root.join("modules"),
+        repo_root.join("stdlib").join("modules"),
+    ]
 }
 
 fn tap_passed(stdout: &str) -> bool {
@@ -83,14 +88,14 @@ fn tap_passed(stdout: &str) -> bool {
 fn find_repo_root(start: &Path) -> Result<PathBuf, String> {
     let mut current = start.to_path_buf();
     loop {
-        if current.join("modules").is_dir() {
+        if current.join("modules").is_dir() || current.join("stdlib").join("modules").is_dir() {
             return Ok(current);
         }
         if !current.pop() {
             break;
         }
     }
-    Err("could not locate repository root containing modules/".to_owned())
+    Err("could not locate repository root containing modules/ or stdlib/modules/".to_owned())
 }
 
 fn collect_targets(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {

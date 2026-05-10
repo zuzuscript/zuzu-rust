@@ -103,9 +103,9 @@ fn collect_workloads(repo_root: &Path, paths: &[PathBuf]) -> Result<Vec<PathBuf>
 
 fn default_workloads(repo_root: &Path) -> Vec<PathBuf> {
     [
-        "t/ztests/std/path/z.zzs",
-        "t/ztests/std/data/cbor/_loaddump.zzs",
-        "t/ztests/std/data/kdl/_loaddump.zzs",
+        "stdlib/tests/std/path/z.zzs",
+        "stdlib/tests/std/data/cbor/_loaddump.zzs",
+        "stdlib/tests/std/data/kdl/_loaddump.zzs",
     ]
     .into_iter()
     .map(|path| repo_root.join(path))
@@ -252,12 +252,12 @@ fn tap_passed(stdout: &str) -> bool {
 fn find_repo_root(start: &Path) -> Result<PathBuf, String> {
     let mut current = start.to_path_buf();
     loop {
-        if current.join("modules").is_dir() && current.join("t").is_dir() {
+        if current.join("stdlib").join("modules").is_dir() || current.join("modules").is_dir() {
             return Ok(current);
         }
         if !current.pop() {
             break;
         }
     }
-    Err("could not locate repository root containing modules/ and t/".to_owned())
+    Err("could not locate repository root containing modules/ or stdlib/modules/".to_owned())
 }

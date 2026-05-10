@@ -411,6 +411,7 @@ fn module_roots(repo_root: &PathBuf, include_dirs: Vec<PathBuf>) -> Vec<PathBuf>
     }
     roots.push(PathBuf::from("/var/lib/zuzu/modules"));
     roots.push(repo_root.join("modules"));
+    roots.push(repo_root.join("stdlib").join("modules"));
     dedup_paths(roots)
 }
 
@@ -661,7 +662,7 @@ fn is_escaped(source: &str, index: usize) -> bool {
 fn find_repo_root(start: &PathBuf) -> Result<PathBuf> {
     let mut current = start.clone();
     loop {
-        if current.join("modules").is_dir() {
+        if current.join("modules").is_dir() || current.join("stdlib").join("modules").is_dir() {
             return Ok(current);
         }
         if !current.pop() {
@@ -669,6 +670,6 @@ fn find_repo_root(start: &PathBuf) -> Result<PathBuf> {
         }
     }
     Err(ZuzuRustError::cli(
-        "could not locate repository root containing modules/",
+        "could not locate repository root containing modules/ or stdlib/modules/",
     ))
 }

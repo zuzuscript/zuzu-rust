@@ -109,7 +109,9 @@ pub(super) fn path_buf_from_value(value: &Value) -> PathBuf {
 pub(super) fn repo_root(runtime: &Runtime) -> PathBuf {
     if let Ok(mut current) = std::env::current_dir() {
         loop {
-            if current.join("modules").join("std").is_dir() {
+            if current.join("modules").join("std").is_dir()
+                || current.join("stdlib").join("modules").join("std").is_dir()
+            {
                 return current;
             }
             if !current.pop() {
@@ -121,6 +123,11 @@ pub(super) fn repo_root(runtime: &Runtime) -> PathBuf {
     for module_root in &runtime.module_roots {
         if module_root.join("std").is_dir() {
             if let Some(root) = module_root.parent() {
+                if root.file_name().and_then(|name| name.to_str()) == Some("stdlib") {
+                    if let Some(project_root) = root.parent() {
+                        return project_root.to_path_buf();
+                    }
+                }
                 return root.to_path_buf();
             }
         }
