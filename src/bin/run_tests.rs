@@ -46,10 +46,11 @@ fn run() -> Result<bool, String> {
     let mut all_ok = true;
     let mut passed = 0usize;
     let mut failed = 0usize;
+    let zuzu = zuzu_binary_path()?;
 
     for file in files {
         let display = file.display().to_string();
-        let output = run_test_child(&file)?;
+        let output = run_test_child(&file, &zuzu)?;
         print!("{}", String::from_utf8_lossy(&output.stdout));
         eprint!("{}", String::from_utf8_lossy(&output.stderr));
 
@@ -87,12 +88,48 @@ fn run_one(file: &str) -> Result<bool, String> {
     }
 }
 
-fn run_test_child(file: &Path) -> Result<Output, String> {
-    Command::new(env::current_exe().map_err(|err| err.to_string())?)
+fn run_test_child(file: &Path, zuzu: &Path) -> Result<Output, String> {
+    let current_exe = env::current_exe().map_err(|err| err.to_string())?;
+    Command::new(current_exe)
         .arg(RUN_ONE_ARG)
         .arg(file)
+        .env("ZUZU", zuzu)
         .output()
         .map_err(|err| format!("failed to run {}: {err}", file.display()))
+}
+
+fn zuzu_binary_path() -> Result<PathBuf, String> {
+    let current_exe = env::current_exe().map_err(|err| err.to_string())?;
+    let mut path = current_exe.to_path_buf();
+    path.set_file_name(format!("zuzu-rust{}", env::consts::EXE_SUFFIX));
+    if !path.is_file() {
+        build_zuzu_binary()?;
+    }
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "could not locate zuzu-rust binary next to {}",
+            current_exe.display()
+        ))
+    }
+}
+
+fn build_zuzu_binary() -> Result<(), String> {
+    let repo_root = find_repo_root(&env::current_dir().map_err(|err| err.to_string())?)?;
+    let status = Command::new("cargo")
+        .arg("build")
+        .arg("--quiet")
+        .arg("--bin")
+        .arg("zuzu-rust")
+        .current_dir(&repo_root)
+        .status()
+        .map_err(|err| format!("failed to build zuzu-rust binary: {err}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("failed to build zuzu-rust binary: {status}"))
+    }
 }
 
 fn test_module_roots(repo_root: &Path) -> Vec<PathBuf> {

@@ -145,27 +145,8 @@ pub(super) fn resolve_fs_path(runtime: &Runtime, path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
-        let root = repo_root(runtime);
-        if let Some(path) = split_repo_legacy_fixture_path(&root, path) {
-            path
-        } else {
-            root.join(path)
-        }
+        repo_root(runtime).join(path)
     }
-}
-
-fn split_repo_legacy_fixture_path(repo_root: &Path, path: &Path) -> Option<PathBuf> {
-    if repo_root.join("t").join("fixtures").exists() {
-        return None;
-    }
-
-    let relative = path.strip_prefix("t").ok()?.strip_prefix("fixtures").ok()?;
-    Some(
-        repo_root
-            .join("stdlib")
-            .join("test-fixtures")
-            .join(relative),
-    )
 }
 
 fn io_path_error(path: &Path, err: std::io::Error) -> ZuzuRustError {
