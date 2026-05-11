@@ -2,8 +2,8 @@
 name = "zuzu-rust"
 version = "0.1.0"
 edition = "2021"
-description = "New Rust implementation track for ZuzuScript"
-license = "MIT"
+description = "Rust implementation of ZuzuScript"
+license = "Artistic-1.0 OR GPL-2.0-or-later"
 autobins = false
 
 [dependencies]
