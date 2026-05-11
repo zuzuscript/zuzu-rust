@@ -5,23 +5,33 @@ has a real lexer, a recursive-descent parser with explicit expression
 precedence, and a true AST. The `zuzu-rust` CLI should continue to support
 `--dump-ast` with a stable, machine-readable AST format.
 
-Use Oxford English in documentation. Prefer standard British English with
+Use Oxford English in documentation: mostly standard British English, with
 `-ize` word endings.
 
-## Split Repository Layout
+## Relationship To Other Projects
 
-Shared ZuzuScript resources live in submodules:
+`zuzu-rust` is one of the three main runtimes, alongside `zuzu-perl` and
+`zuzu-js`. It consumes shared resources through submodules:
 
-- `stdlib/modules` contains Pure Zuzu Modules and POD stubs for
-  runtime-supported modules.
-- `stdlib/tests` contains standard-library ztests.
-- `stdlib/test-modules` contains test helper modules.
-- `stdlib/test-fixtures` contains standard-library fixtures.
-- `languagetests` contains language-level ztests.
-- `docs/examples` and `docs/userguide` are documentation submodules.
+- `stdlib` for shared modules, stdlib tests, fixtures, and test helpers.
+- `languagetests` for language conformance tests.
+- `docs/examples` and `docs/userguide` for examples and language reference.
 
-Do not refer to sibling repositories with `..`. If this repository needs
-shared files from another repository, add them as a git submodule.
+The matrix project runs this runtime against the shared tests.
+`zuzu-designer` embeds this crate for GUI XML previews. Do not refer to
+sibling repositories with `..`; use the local submodules.
+
+## Project Shape
+
+- `src/lexer.rs`, `src/parser.rs`, `src/ast.rs`, and `src/token.rs` hold the
+  frontend.
+- `src/runtime.rs` and related modules hold evaluation and native module
+  support.
+- `src/codegen.rs`, `src/optimizer.rs`, `src/sema.rs`, and `src/infer.rs`
+  support analysis and generated output.
+- `src/web.rs` and the `zuzu-rust-server` binary support web execution.
+- `tests/` contains Rust tests for CLI, AST dumping, runtime, optimizer,
+  worker, and server behaviour.
 
 ## Runtime Rules
 
@@ -38,13 +48,20 @@ runtime-supported `perl.zzm` module is out of scope for `zuzu-rust`.
 
 Use `nice` for compile-heavy checks:
 
-    nice -n 10 cargo check
-    nice -n 10 cargo test
-    nice -n 10 cargo run --bin zuzu-rust-run-tests -- languagetests stdlib/tests
+```bash
+nice -n 10 cargo check
+nice -n 10 cargo test
+nice -n 10 cargo run --bin zuzu-rust-run-tests -- languagetests stdlib/tests
+```
 
-Ztests emit TAP. A passing ztest should emit a valid plan, no `not ok` lines,
-and exit with status zero. When fixing tests, prefer fixing parser/runtime
-behaviour. Do not modify `.zzs` test scripts or fixture data.
+Ztests emit TAP. A passing ztest should emit a valid plan, no `not ok`
+lines, and exit with status zero. When fixing tests, prefer fixing
+parser/runtime behaviour. Do not modify `.zzs` test scripts or fixture data
+unless the test itself is the requested target.
+
+Keep `--dump-ast` stable and structured. If AST output changes, update
+focused tests and treat the output shape as a public interface for future
+tooling.
 
 ## Style
 
