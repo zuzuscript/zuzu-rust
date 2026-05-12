@@ -90,10 +90,15 @@ fn run_one(file: &str) -> Result<bool, String> {
 
 fn run_test_child(file: &Path, zuzu: &Path) -> Result<Output, String> {
     let current_exe = env::current_exe().map_err(|err| err.to_string())?;
+    let repo_root = find_repo_root(&env::current_dir().map_err(|err| err.to_string())?)?;
     Command::new(current_exe)
         .arg(RUN_ONE_ARG)
         .arg(file)
         .env("ZUZU", zuzu)
+        .env(
+            "FIXTURE_DIR",
+            repo_root.join("stdlib").join("test-fixtures"),
+        )
         .output()
         .map_err(|err| format!("failed to run {}: {err}", file.display()))
 }

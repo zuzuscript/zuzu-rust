@@ -106,46 +106,15 @@ pub(super) fn path_buf_from_value(value: &Value) -> PathBuf {
     }
 }
 
-pub(super) fn repo_root(runtime: &Runtime) -> PathBuf {
-    if let Ok(mut current) = std::env::current_dir() {
-        loop {
-            if current.join("modules").join("std").is_dir()
-                || current.join("modules").is_dir()
-                || current.join("stdlib").join("modules").join("std").is_dir()
-            {
-                return current;
-            }
-            if !current.pop() {
-                break;
-            }
-        }
-    }
-
-    for module_root in &runtime.module_roots {
-        if module_root.join("std").is_dir() {
-            if let Some(root) = module_root.parent() {
-                if root.file_name().and_then(|name| name.to_str()) == Some("stdlib") {
-                    if let Some(project_root) = root.parent() {
-                        return project_root.to_path_buf();
-                    }
-                }
-                return root.to_path_buf();
-            }
-        }
-    }
-
-    runtime
-        .module_roots
-        .first()
-        .and_then(|module_root| module_root.parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+pub(super) fn cwd_path() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
-pub(super) fn resolve_fs_path(runtime: &Runtime, path: &Path) -> PathBuf {
+pub(super) fn resolve_fs_path(_runtime: &Runtime, path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
-        repo_root(runtime).join(path)
+        cwd_path().join(path)
     }
 }
 
@@ -224,7 +193,7 @@ pub(super) fn call_class_method(
         return None;
     }
     let value = match name {
-        "cwd" => Ok(path_object(repo_root(runtime))),
+        "cwd" => Ok(path_object(cwd_path())),
         "tempfile" => {
             let mut path = std::env::temp_dir();
             let nanos = std::time::SystemTime::now()
@@ -286,8 +255,16 @@ pub(super) fn call_class_method(
             }
             Ok(path_object(normalized))
         }),
-        "glob" => require_arity(name, args, 1).and_then(|_| {
-            let pattern = runtime.render_value(&args[0])?;
+        "glob" => {
+            if args.is_empty() || args.len() > 2 {
+                return Some(Err(ZuzuRustError::runtime(
+                    "glob() expects one or two arguments",
+                )));
+            }
+            let pattern = match runtime.render_value(&args[0]) {
+                Ok(pattern) => pattern,
+                Err(err) => return Some(Err(err)),
+            };
             let (base, suffix) = pattern
                 .rsplit_once(std::path::MAIN_SEPARATOR)
                 .map(|(dir, leaf)| (PathBuf::from(dir), leaf.to_owned()))
@@ -302,16 +279,17 @@ pub(super) fn call_class_method(
                         .map(|value| value.to_string_lossy().to_string())
                         .unwrap_or_default();
                     if glob_matches(&suffix, &file_name) {
-                        let display = entry_path
-                            .strip_prefix(repo_root(runtime))
-                            .unwrap_or(&entry_path)
-                            .to_path_buf();
+                        let display = if base.is_absolute() {
+                            entry_path
+                        } else {
+                            base.join(file_name)
+                        };
                         out.push(path_object(display));
                     }
                 }
             }
             Ok(Value::Array(out))
-        }),
+        }
         _ => return None,
     };
     Some(value)
@@ -450,7 +428,7 @@ pub(super) fn call_object_method(
                     if path.is_absolute() {
                         path.clone()
                     } else {
-                        repo_root(runtime).join(&path)
+                        cwd_path().join(&path)
                     }
                 },
             )))
@@ -815,11 +793,8 @@ pub(super) fn call_object_method(
             let mut out = Vec::new();
             if let Ok(entries) = fs::read_dir(&fs_path) {
                 for entry in entries.flatten() {
-                    let entry_path = entry.path();
-                    let display = entry_path
-                        .strip_prefix(repo_root(runtime))
-                        .unwrap_or(&entry_path)
-                        .to_path_buf();
+                    let file_name = entry.file_name().to_string_lossy().to_string();
+                    let display = path.join(file_name);
                     out.push(path_object(display));
                 }
             }
@@ -830,11 +805,8 @@ pub(super) fn call_object_method(
             let mut out = Vec::new();
             if let Ok(entries) = fs::read_dir(&fs_path) {
                 for entry in entries.flatten() {
-                    let entry_path = entry.path();
-                    let display = entry_path
-                        .strip_prefix(repo_root(runtime))
-                        .unwrap_or(&entry_path)
-                        .to_path_buf();
+                    let file_name = entry.file_name().to_string_lossy().to_string();
+                    let display = path.join(file_name);
                     out.push(path_object(display));
                 }
             }
@@ -847,11 +819,7 @@ pub(super) fn call_object_method(
         }),
         "canonpath" | "realpath" => require_arity(name, args, 0).and_then(|_| {
             let canonical = fs::canonicalize(&fs_path).unwrap_or_else(|_| fs_path.clone());
-            let display = canonical
-                .strip_prefix(repo_root(runtime))
-                .unwrap_or(&canonical)
-                .to_path_buf();
-            Ok(path_object(display))
+            Ok(path_object(canonical))
         }),
         "subsumes" => require_arity(name, args, 1).and_then(|_| {
             let other = resolve_fs_path(runtime, &path_buf_from_value(&args[0]));

@@ -304,10 +304,10 @@ fn proc_options(value: Option<&Value>) -> ProcOptions {
     }
 }
 
-fn proc_cwd(runtime: &Runtime, value: Option<&Value>) -> std::path::PathBuf {
+fn proc_cwd(_runtime: &Runtime, value: Option<&Value>) -> std::path::PathBuf {
     dict_string(value, "cwd")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| super::io::repo_root(runtime))
+        .unwrap_or_else(super::io::cwd_path)
 }
 
 fn process_spawn_error(prefix: &str, cwd: &Path, err: impl std::fmt::Display) -> String {
