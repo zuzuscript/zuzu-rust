@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use zuzu_rust::{
-    optimizer, parse_program_with_compile_options, OptimizationLevel, OptimizationOptions,
-    ParseOptions, Result, Runtime, RuntimePolicy, ZuzuRustError,
+    module_search_roots, optimizer, parse_program_with_compile_options, OptimizationLevel,
+    OptimizationOptions, ParseOptions, Result, Runtime, RuntimePolicy, ZuzuRustError,
 };
 
 fn main() -> ExitCode {
@@ -212,9 +212,8 @@ fn run() -> Result<()> {
                 "-R/--repl does not accept a script path or argv values",
             ));
         }
-        let repo_root = find_repo_root(&env::current_dir()?)?;
         let runtime = Runtime::with_policy(
-            module_roots(&repo_root, include_dirs),
+            module_search_roots(include_dirs),
             runtime_policy(denied_capabilities, denied_modules).debug_level(debug_level),
         )
         .with_parse_options(run_sema, infer_types)
@@ -268,9 +267,8 @@ fn run() -> Result<()> {
         return Ok(());
     }
 
-    let repo_root = find_repo_root(&env::current_dir()?)?;
     let runtime = Runtime::with_policy(
-        module_roots(&repo_root, include_dirs),
+        module_search_roots(include_dirs),
         runtime_policy(denied_capabilities, denied_modules).debug_level(debug_level),
     )
     .with_parse_options(run_sema, infer_types)
@@ -401,38 +399,12 @@ fn runtime_policy(denied_capabilities: Vec<String>, denied_modules: Vec<String>)
     policy
 }
 
-fn module_roots(repo_root: &PathBuf, include_dirs: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut roots = include_dirs;
-    if let Some(zuzulib) = env::var_os("ZUZULIB") {
-        roots.extend(env::split_paths(&zuzulib));
-    }
-    if let Some(home) = env::var_os("HOME") {
-        roots.push(PathBuf::from(home).join(".zuzu").join("modules"));
-    }
-    roots.push(PathBuf::from("/var/lib/zuzu/modules"));
-    roots.push(repo_root.join("modules"));
-    roots.push(repo_root.join("stdlib").join("modules"));
-    dedup_paths(roots)
-}
-
-fn dedup_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut seen = std::collections::HashSet::new();
-    let mut out = Vec::new();
-    for path in paths {
-        if seen.insert(path.clone()) {
-            out.push(path);
-        }
-    }
-    out
-}
-
 fn print_version(verbose: bool, include_dirs: &[PathBuf]) -> Result<()> {
-    let repo_root = find_repo_root(&env::current_dir()?)?;
     println!("zuzu-rust version {}", env!("CARGO_PKG_VERSION"));
     if verbose {
         println!();
         println!("lib search paths:");
-        for path in module_roots(&repo_root, include_dirs.to_vec()) {
+        for path in module_search_roots(include_dirs.to_vec()) {
             println!("  {}", path.display());
         }
     }
@@ -657,19 +629,4 @@ fn is_escaped(source: &str, index: usize) -> bool {
         backslashes += 1;
     }
     backslashes % 2 == 1
-}
-
-fn find_repo_root(start: &PathBuf) -> Result<PathBuf> {
-    let mut current = start.clone();
-    loop {
-        if current.join("modules").is_dir() || current.join("stdlib").join("modules").is_dir() {
-            return Ok(current);
-        }
-        if !current.pop() {
-            break;
-        }
-    }
-    Err(ZuzuRustError::cli(
-        "could not locate repository root containing modules/ or stdlib/modules/",
-    ))
 }

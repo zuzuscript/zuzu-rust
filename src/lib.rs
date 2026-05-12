@@ -14,7 +14,9 @@ pub mod web;
 pub use ast::{Expression, Program};
 pub use error::{Result, ZuzuRustError};
 pub use optimizer::{OptimizationLevel, OptimizationOptions, OptimizationPass};
-pub use runtime::{ExecutionOutput, HostValue, LoadedScript, Runtime, RuntimePolicy};
+pub use runtime::{
+    module_search_roots, ExecutionOutput, HostValue, LoadedScript, Runtime, RuntimePolicy,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseOptions {

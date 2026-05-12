@@ -363,10 +363,11 @@ fn runs_collection_operator_ztest_script() {
 }
 
 #[test]
-fn system_inc_exposes_colon_delimited_module_roots() {
-    let root_a = PathBuf::from("alpha/modules");
-    let root_b = PathBuf::from("beta/modules");
-    let expected = format!("{}:{}", root_a.display(), root_b.display());
+fn system_inc_exposes_module_roots_as_array() {
+    let cwd = std::env::current_dir().unwrap();
+    let root_a = cwd.join("alpha/modules");
+    let root_b = cwd.join("beta/modules");
+    let expected = format!("[{}, {}]", root_a.display(), root_b.display());
     let runtime = Runtime::new(vec![root_a, root_b]);
 
     let output = runtime
@@ -382,23 +383,35 @@ fn system_inc_exposes_colon_delimited_module_roots() {
 }
 
 #[test]
-fn from_repo_root_system_inc_includes_default_module_dirs() {
-    let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+fn system_inc_rejects_mutation() {
+    let runtime = Runtime::new(vec![PathBuf::from("/opt/zuzu/modules")]);
 
-    let output = runtime
+    let err = runtime
         .run_script_source(
             r#"
-            say __system__{inc};
+            __system__{inc}.append("/tmp/other");
             "#,
         )
-        .expect("__system__.inc should be readable");
+        .err()
+        .expect("__system__.inc should reject mutation");
 
-    let inc = output.stdout.trim();
-    let parts: Vec<&str> = inc.split(':').collect();
+    assert!(err.to_string().contains("Cannot modify __system__"));
+}
 
-    assert!(parts.contains(&"/var/lib/zuzu/modules"));
-    assert!(parts.contains(&repo_root.join("modules").to_string_lossy().as_ref()));
+#[test]
+fn system_global_rejects_dict_mutation() {
+    let runtime = Runtime::new(vec![PathBuf::from("/opt/zuzu/modules")]);
+
+    let err = runtime
+        .run_script_source(
+            r#"
+            __system__.set("runtime", "other");
+            "#,
+        )
+        .err()
+        .expect("__system__ should reject mutation");
+
+    assert!(err.to_string().contains("Cannot modify __system__"));
 }
 
 #[test]

@@ -13,8 +13,8 @@ use zuzu_rust::web::{
     WebHttpServerConfig,
 };
 use zuzu_rust::{
-    parse_program_with_compile_options_and_source_file, OptimizationOptions, ParseOptions,
-    RuntimePolicy, ZuzuRustError,
+    module_search_roots, parse_program_with_compile_options_and_source_file, OptimizationOptions,
+    ParseOptions, RuntimePolicy, ZuzuRustError,
 };
 
 type Result<T> = std::result::Result<T, ZuzuRustError>;
@@ -41,8 +41,7 @@ async fn run() -> Result<()> {
         .as_ref()
         .ok_or_else(|| ZuzuRustError::cli("usage: zuzu-rust-server [options] path/to/app.zzs"))?;
     let program = load_app_program(app_path)?;
-    let repo_root = find_repo_root(&env::current_dir()?)?;
-    let module_roots = module_roots(&repo_root, options.include_dirs.clone());
+    let module_roots = module_search_roots(options.include_dirs.clone());
     let access_log = access_log_sink(&options.access_log, options.access_log_format)?;
     let pool_config = pool_config_from_options(&options, &module_roots);
 
@@ -425,47 +424,6 @@ async fn run_reload_loop(
         }) {
             Ok(()) => eprintln!("reload activated path={}", app_path.display()),
             Err(err) => eprintln!("reload failed path={} error={err}", app_path.display()),
-        }
-    }
-}
-
-fn module_roots(repo_root: &Path, include_dirs: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut roots = include_dirs;
-    if let Some(zuzulib) = env::var_os("ZUZULIB") {
-        roots.extend(env::split_paths(&zuzulib));
-    }
-    if let Some(home) = env::var_os("HOME") {
-        roots.push(PathBuf::from(home).join(".zuzu").join("modules"));
-    }
-    roots.push(PathBuf::from("/var/lib/zuzu/modules"));
-    roots.push(repo_root.join("modules"));
-    roots.push(repo_root.join("stdlib").join("modules"));
-    dedup_paths(roots)
-}
-
-fn dedup_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut seen = std::collections::HashSet::new();
-    let mut out = Vec::new();
-    for path in paths {
-        if seen.insert(path.clone()) {
-            out.push(path);
-        }
-    }
-    out
-}
-
-fn find_repo_root(start: &Path) -> io::Result<PathBuf> {
-    let mut current = if start.is_file() {
-        start.parent().unwrap_or(start).to_path_buf()
-    } else {
-        start.to_path_buf()
-    };
-    loop {
-        if current.join("modules").is_dir() || current.join("stdlib").join("modules").is_dir() {
-            return Ok(current);
-        }
-        if !current.pop() {
-            return env::current_dir();
         }
     }
 }

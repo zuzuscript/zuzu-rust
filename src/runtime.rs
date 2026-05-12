@@ -250,9 +250,11 @@ enum Value {
     BinaryString(Vec<u8>),
     Regex(String, String),
     Array(Vec<Value>),
+    SystemArray(Vec<Value>),
     Set(Vec<Value>),
     Bag(Vec<Value>),
     Dict(HashMap<String, Value>),
+    SystemDict(HashMap<String, Value>),
     PairList(Vec<(String, Value)>),
     Pair(String, Box<Value>),
     Function(Rc<FunctionValue>),
@@ -552,6 +554,90 @@ enum CollectionKind {
     Bag,
 }
 
+pub fn module_search_roots(include_dirs: Vec<PathBuf>) -> Vec<PathBuf> {
+    let initial_cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut roots = include_dirs
+        .into_iter()
+        .map(|path| absolutize_module_path(path, &initial_cwd))
+        .collect::<Vec<_>>();
+
+    if let Some(zuzulib) = std::env::var_os("ZUZULIB") {
+        roots.extend(
+            std::env::split_paths(&zuzulib).map(|path| absolutize_module_path(path, &initial_cwd)),
+        );
+    }
+
+    if let Some(user_dir) = user_modules_dir() {
+        if user_dir.is_dir() {
+            roots.push(user_dir);
+        }
+    }
+
+    if let Some(system_dir) = system_modules_dir() {
+        if system_dir.is_dir() {
+            roots.push(system_dir);
+        }
+    }
+
+    if let Some(stdlib) = std::env::var_os("ZUZU_STDLIB").filter(|value| !value.is_empty()) {
+        roots.push(absolutize_module_path(PathBuf::from(stdlib), &initial_cwd));
+    } else if let Some(stdlib) = installed_stdlib_modules_dir() {
+        roots.push(stdlib);
+    }
+
+    dedup_paths(roots)
+}
+
+fn absolutize_module_path(path: PathBuf, base: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path
+    } else {
+        base.join(path)
+    }
+}
+
+fn user_modules_dir() -> Option<PathBuf> {
+    if cfg!(windows) {
+        return std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .map(|path| path.join("Zuzu").join("modules"));
+    }
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|path| path.join(".zuzu").join("modules"))
+}
+
+fn system_modules_dir() -> Option<PathBuf> {
+    if cfg!(windows) {
+        return std::env::var_os("ProgramData")
+            .map(PathBuf::from)
+            .map(|path| path.join("Zuzu").join("modules"));
+    }
+    Some(PathBuf::from("/var/lib/zuzu/modules"))
+}
+
+fn installed_stdlib_modules_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let bin_dir = exe.parent()?;
+    let prefix = if bin_dir.file_name().and_then(|name| name.to_str()) == Some("bin") {
+        bin_dir.parent()?
+    } else {
+        bin_dir
+    };
+    Some(prefix.join("share").join("zuzu-rust").join("modules"))
+}
+
+fn dedup_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for path in paths {
+        if seen.insert(path.clone()) {
+            out.push(path);
+        }
+    }
+    out
+}
+
 impl Runtime {
     pub fn new(module_roots: Vec<PathBuf>) -> Self {
         Self::with_policy(module_roots, RuntimePolicy::default())
@@ -598,26 +684,12 @@ impl Runtime {
         }
     }
 
-    pub fn from_repo_root(repo_root: &Path) -> Self {
-        let mut module_roots = Vec::new();
-        if let Some(home) = std::env::var_os("HOME") {
-            module_roots.push(PathBuf::from(home).join(".zuzu").join("modules"));
-        }
-        module_roots.push(PathBuf::from("/var/lib/zuzu/modules"));
-        module_roots.push(repo_root.join("modules"));
-        module_roots.push(repo_root.join("stdlib").join("modules"));
-        Self::new(module_roots)
+    pub fn from_repo_root(_repo_root: &Path) -> Self {
+        Self::new(module_search_roots(Vec::new()))
     }
 
-    pub fn from_repo_root_with_policy(repo_root: &Path, policy: RuntimePolicy) -> Self {
-        let mut module_roots = Vec::new();
-        if let Some(home) = std::env::var_os("HOME") {
-            module_roots.push(PathBuf::from(home).join(".zuzu").join("modules"));
-        }
-        module_roots.push(PathBuf::from("/var/lib/zuzu/modules"));
-        module_roots.push(repo_root.join("modules"));
-        module_roots.push(repo_root.join("stdlib").join("modules"));
-        Self::with_policy(module_roots, policy)
+    pub fn from_repo_root_with_policy(_repo_root: &Path, policy: RuntimePolicy) -> Self {
+        Self::with_policy(module_search_roots(Vec::new()), policy)
     }
 
     pub fn with_parse_options(mut self, run_sema: bool, infer_types: bool) -> Self {
@@ -1010,12 +1082,12 @@ impl Runtime {
             Value::Number(value) => Ok(HostValue::Number(value)),
             Value::String(value) => Ok(HostValue::String(value)),
             Value::BinaryString(value) => Ok(HostValue::Binary(value)),
-            Value::Array(values) => values
+            Value::Array(values) | Value::SystemArray(values) => values
                 .into_iter()
                 .map(|value| self.value_to_host_value(value))
                 .collect::<Result<Vec<_>>>()
                 .map(HostValue::Array),
-            Value::Dict(values) => values
+            Value::Dict(values) | Value::SystemDict(values) => values
                 .into_iter()
                 .map(|(key, value)| Ok((key, self.value_to_host_value(value)?)))
                 .collect::<Result<HashMap<_, _>>>()
@@ -1961,7 +2033,7 @@ impl Runtime {
     }
 
     fn current_system_value(&self) -> Value {
-        Value::Dict(HashMap::from([
+        Value::SystemDict(HashMap::from([
             ("runtime".to_owned(), Value::String("zuzu-rust".to_owned())),
             ("language_version".to_owned(), Value::Number(0.0)),
             (
@@ -1974,12 +2046,11 @@ impl Runtime {
             ),
             (
                 "inc".to_owned(),
-                Value::String(
+                Value::SystemArray(
                     self.module_roots
                         .iter()
-                        .map(|path| path.to_string_lossy().into_owned())
-                        .collect::<Vec<_>>()
-                        .join(":"),
+                        .map(|path| Value::String(path.to_string_lossy().into_owned()))
+                        .collect(),
                 ),
             ),
             ("deny_fs".to_owned(), Value::Boolean(self.is_denied("fs"))),
@@ -2523,7 +2594,9 @@ impl Runtime {
                 let object = self.deref_value(&self.eval_expression(object, Rc::clone(&env))?)?;
                 let key = self.eval_dict_key(key, env)?;
                 match object {
-                    Value::Dict(map) => Ok(map.get(&key).cloned().unwrap_or(Value::Null)),
+                    Value::Dict(map) | Value::SystemDict(map) => {
+                        Ok(map.get(&key).cloned().unwrap_or(Value::Null))
+                    }
                     Value::Pair(pair_key, value) => Ok(if key == "pair" {
                         Value::Array(vec![Value::String(pair_key), *value])
                     } else {
@@ -4404,6 +4477,15 @@ impl Runtime {
                 reject_named_args(name, &named_args)?;
                 self.call_array_method(values, name, &args)
             }
+            Value::SystemArray(values) => {
+                if is_mutating_collection_method(name) {
+                    return Err(ZuzuRustError::runtime("Cannot modify __system__"));
+                }
+                let (args, named_args) = self.deref_alias_method_args(args, &named_args)?;
+                reject_named_args(name, &named_args)?;
+                let mut values = values.clone();
+                self.call_array_method(&mut values, name, &args)
+            }
             Value::Set(values) => {
                 let (args, named_args) = if is_mutating_collection_method(name) {
                     self.preserve_shared_method_args(args, &named_args)?
@@ -4430,6 +4512,15 @@ impl Runtime {
                 };
                 reject_named_args(name, &named_args)?;
                 self.call_dict_method(values, name, &args)
+            }
+            Value::SystemDict(values) => {
+                if is_mutating_collection_method(name) {
+                    return Err(ZuzuRustError::runtime("Cannot modify __system__"));
+                }
+                let (args, named_args) = self.deref_alias_method_args(args, &named_args)?;
+                reject_named_args(name, &named_args)?;
+                let mut values = values.clone();
+                self.call_dict_method(&mut values, name, &args)
             }
             Value::PairList(values) => {
                 let (args, named_args) = if is_mutating_collection_method(name) {
@@ -5299,9 +5390,11 @@ impl Runtime {
         let object = self.deref_value(&object)?;
         let index = self.value_to_number(&index)? as isize;
         match object {
-            Value::Array(values) => Ok(resolve_index(values.len(), index)
-                .and_then(|resolved| values.get(resolved).cloned())
-                .unwrap_or(Value::Null)),
+            Value::Array(values) | Value::SystemArray(values) => {
+                Ok(resolve_index(values.len(), index)
+                    .and_then(|resolved| values.get(resolved).cloned())
+                    .unwrap_or(Value::Null))
+            }
             Value::Set(values) => Ok(resolve_index(values.len(), index)
                 .and_then(|resolved| values.get(resolved).cloned())
                 .unwrap_or(Value::Null)),
@@ -5321,7 +5414,7 @@ impl Runtime {
     fn eval_slice(&self, object: Value, start: Value, end: Value) -> Result<Value> {
         let object = self.deref_value(&object)?;
         match object {
-            Value::Array(values) => {
+            Value::Array(values) | Value::SystemArray(values) => {
                 let len = values.len() as isize;
                 let mut start_index = match start {
                     Value::Null => 0,
@@ -5383,8 +5476,11 @@ impl Runtime {
     fn iterable_items(&self, iterable: Value) -> Result<Vec<Value>> {
         let iterable = self.deref_value(&iterable)?;
         match iterable {
-            Value::Array(items) | Value::Set(items) | Value::Bag(items) => Ok(items),
-            Value::Dict(map) => {
+            Value::Array(items)
+            | Value::SystemArray(items)
+            | Value::Set(items)
+            | Value::Bag(items) => Ok(items),
+            Value::Dict(map) | Value::SystemDict(map) => {
                 let mut keys: Vec<_> = map.keys().cloned().collect();
                 keys.sort();
                 Ok(keys.into_iter().map(Value::String).collect())
@@ -6107,6 +6203,7 @@ impl Runtime {
                     *shared.borrow_mut() = current;
                     Ok(value)
                 }
+                Value::SystemArray(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
                 other => Err(ZuzuRustError::runtime(format!(
                     "index assignment requires an Array value, got {}",
                     self.typeof_name(other)
@@ -6123,6 +6220,7 @@ impl Runtime {
                     let _ = self.assign_reference(reference, Value::Array(values))?;
                     Ok(value)
                 }
+                Value::SystemArray(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
                 other => Err(ZuzuRustError::runtime(format!(
                     "index assignment requires an Array value, got {}",
                     self.typeof_name(&other)
@@ -6146,6 +6244,7 @@ impl Runtime {
                     }
                 }
             }
+            Value::SystemArray(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
             other => Err(ZuzuRustError::runtime(format!(
                 "index assignment requires an Array value, got {}",
                 self.typeof_name(&other)
@@ -6171,6 +6270,7 @@ impl Runtime {
                     *shared.borrow_mut() = current;
                     Ok(value)
                 }
+                Value::SystemDict(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
                 Value::PairList(values) => {
                     if let Some((_, entry_value)) = values
                         .iter_mut()
@@ -6196,6 +6296,7 @@ impl Runtime {
                     let _ = self.assign_reference(reference, Value::Dict(map))?;
                     Ok(value)
                 }
+                Value::SystemDict(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
                 Value::PairList(mut values) => {
                     if let Some((_, entry_value)) = values
                         .iter_mut()
@@ -6229,6 +6330,7 @@ impl Runtime {
                     }
                 }
             }
+            Value::SystemDict(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
             Value::PairList(mut values) => {
                 if let Some((_, entry_value)) = values
                     .iter_mut()
@@ -6329,6 +6431,9 @@ impl Runtime {
                             *shared.borrow_mut() = Value::String(updated);
                             Ok(Value::String(replacement))
                         }
+                        Value::SystemArray(_) => {
+                            Err(ZuzuRustError::runtime("Cannot modify __system__"))
+                        }
                         _ => Err(ZuzuRustError::runtime(
                             "slice assignment requires an Array or String value",
                         )),
@@ -6357,6 +6462,7 @@ impl Runtime {
                     env.assign(name, Value::Array(values))?;
                     Ok(Value::Array(replacement))
                 }
+                Value::SystemArray(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
                 Value::String(text) => {
                     let replacement = match value {
                         Value::String(text) => text,
@@ -6573,7 +6679,7 @@ impl Runtime {
             (Value::Number(_), Value::Class(name)) => name.as_str() == "Number",
             (Value::String(_), Value::Class(name)) => name.as_str() == "String",
             (Value::BinaryString(_), Value::Class(name)) => name.as_str() == "BinaryString",
-            (Value::Array(_), Value::Class(name)) => {
+            (Value::Array(_) | Value::SystemArray(_), Value::Class(name)) => {
                 matches!(name.as_str(), "Array" | "Collection" | "Object")
             }
             (Value::Set(_), Value::Class(name)) => {
@@ -6582,7 +6688,7 @@ impl Runtime {
             (Value::Bag(_), Value::Class(name)) => {
                 matches!(name.as_str(), "Bag" | "Collection" | "Object")
             }
-            (Value::Dict(_), Value::Class(name)) => {
+            (Value::Dict(_) | Value::SystemDict(_), Value::Class(name)) => {
                 matches!(name.as_str(), "Dict" | "Collection" | "Object")
             }
             (Value::PairList(_), Value::Class(name)) => name.as_str() == "PairList",
@@ -7352,16 +7458,27 @@ impl Runtime {
             "Null" => resolved.type_name() == "Null",
             "Object" => matches!(
                 resolved,
-                Value::Array(_) | Value::Set(_) | Value::Bag(_) | Value::Dict(_) | Value::Object(_)
+                Value::Array(_)
+                    | Value::SystemArray(_)
+                    | Value::Set(_)
+                    | Value::Bag(_)
+                    | Value::Dict(_)
+                    | Value::SystemDict(_)
+                    | Value::Object(_)
             ),
             "Collection" => matches!(
                 resolved,
-                Value::Array(_) | Value::Set(_) | Value::Bag(_) | Value::Dict(_)
+                Value::Array(_)
+                    | Value::SystemArray(_)
+                    | Value::Set(_)
+                    | Value::Bag(_)
+                    | Value::Dict(_)
+                    | Value::SystemDict(_)
             ),
-            "Array" => matches!(resolved, Value::Array(_)),
+            "Array" => matches!(resolved, Value::Array(_) | Value::SystemArray(_)),
             "Set" => matches!(resolved, Value::Set(_)),
             "Bag" => matches!(resolved, Value::Bag(_)),
-            "Dict" => matches!(resolved, Value::Dict(_)),
+            "Dict" => matches!(resolved, Value::Dict(_) | Value::SystemDict(_)),
             "PairList" => matches!(resolved, Value::PairList(_)),
             "Pair" => matches!(resolved, Value::Pair(_, _)),
             "Regexp" => matches!(resolved, Value::Regex(_, _)),
@@ -7748,6 +7865,7 @@ impl Value {
                     .map(Value::into_shared_if_composite)
                     .collect(),
             )))),
+            Value::SystemArray(_) => self,
             Value::Set(values) => Value::Shared(Rc::new(RefCell::new(Value::Set(
                 values
                     .into_iter()
@@ -7766,6 +7884,7 @@ impl Value {
                     .map(|(key, value)| (key, value.into_shared_if_composite()))
                     .collect(),
             )))),
+            Value::SystemDict(_) => self,
             Value::PairList(values) => Value::Shared(Rc::new(RefCell::new(Value::PairList(
                 values
                     .into_iter()
@@ -7894,10 +8013,10 @@ impl Value {
             Value::String(value) => !value.is_empty(),
             Value::BinaryString(bytes) => !bytes.is_empty(),
             Value::Regex(_, _) => true,
-            Value::Array(values) => !values.is_empty(),
+            Value::Array(values) | Value::SystemArray(values) => !values.is_empty(),
             Value::Set(values) => !values.is_empty(),
             Value::Bag(values) => !values.is_empty(),
-            Value::Dict(values) => !values.is_empty(),
+            Value::Dict(values) | Value::SystemDict(values) => !values.is_empty(),
             Value::PairList(values) => !values.is_empty(),
             Value::Pair(_, _)
             | Value::Function(_)
@@ -7948,7 +8067,7 @@ impl Value {
             Value::String(value) => value.clone(),
             Value::BinaryString(bytes) => String::from_utf8_lossy(bytes).into_owned(),
             Value::Regex(pattern, _) => pattern.clone(),
-            Value::Array(values) => {
+            Value::Array(values) | Value::SystemArray(values) => {
                 let parts = values.iter().map(Value::render).collect::<Vec<_>>();
                 format!("[{}]", parts.join(", "))
             }
@@ -7960,7 +8079,7 @@ impl Value {
                 let parts = values.iter().map(Value::render).collect::<Vec<_>>();
                 format!("<<< {} >>>", parts.join(", "))
             }
-            Value::Dict(values) => {
+            Value::Dict(values) | Value::SystemDict(values) => {
                 let mut parts = values
                     .iter()
                     .map(|(key, value)| format!("{key}: {}", value.render()))
@@ -8002,10 +8121,10 @@ impl Value {
         }
         match self {
             Value::Shared(value) => value.borrow().type_name(),
-            Value::Array(_) => "Array",
+            Value::Array(_) | Value::SystemArray(_) => "Array",
             Value::Set(_) => "Set",
             Value::Bag(_) => "Bag",
-            Value::Dict(_) => "Dict",
+            Value::Dict(_) | Value::SystemDict(_) => "Dict",
             Value::PairList(_) => "PairList",
             Value::Pair(_, _) => "Pair",
             Value::Method(_) => "Method",
@@ -8051,7 +8170,9 @@ impl Value {
             _ => {}
         }
         match (self, other) {
-            (Value::Array(a), Value::Array(b)) => sequence_eq(a, b),
+            (Value::Array(a) | Value::SystemArray(a), Value::Array(b) | Value::SystemArray(b)) => {
+                sequence_eq(a, b)
+            }
             (Value::Set(a), Value::Set(b)) => collection_items_eq(a, b),
             (Value::Bag(a), Value::Bag(b)) => bag_items_eq(a, b),
             (Value::Pair(a_key, a_value), Value::Pair(b_key, b_value)) => {
@@ -8078,7 +8199,9 @@ impl Value {
             | (Value::AliasRef(a), Value::AliasRef(b))
             | (Value::Ref(a), Value::AliasRef(b))
             | (Value::AliasRef(a), Value::Ref(b)) => Rc::ptr_eq(a, b),
-            (Value::Dict(a), Value::Dict(b)) => dict_eq(a, b),
+            (Value::Dict(a) | Value::SystemDict(a), Value::Dict(b) | Value::SystemDict(b)) => {
+                dict_eq(a, b)
+            }
             (Value::PairList(a), Value::PairList(b)) => pairlist_eq(a, b),
             _ => false,
         }
