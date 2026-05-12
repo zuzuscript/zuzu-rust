@@ -433,6 +433,27 @@ fn system_inc_exposes_module_roots_as_array() {
 }
 
 #[test]
+fn system_dict_behaves_like_dict_for_reads() {
+    let runtime = Runtime::new(vec![PathBuf::from("/opt/zuzu/modules")]);
+
+    let output = runtime
+        .run_script_source(
+            r#"
+            say "deny_fs" in __system__;
+            say "missing" in __system__;
+            say __system__.has("runtime");
+            say __system__.get("runtime");
+            say __system__.length() > 0;
+            say __system__ subsetof __system__.keys();
+            "#,
+        )
+        .expect("__system__ should support Dict read operations");
+
+    assert_eq!(output.stdout, "1\n0\n1\nzuzu-rust\n1\n1\n");
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
 fn system_inc_rejects_mutation() {
     let runtime = Runtime::new(vec![PathBuf::from("/opt/zuzu/modules")]);
 

@@ -220,7 +220,7 @@ pub(in crate::runtime) fn collection_contains(collection: &Value, needle: &Value
         Value::Array(values) | Value::Set(values) | Value::Bag(values) => {
             values.iter().any(|value| value.strict_eq(needle))
         }
-        Value::Dict(values) => values.contains_key(&needle.render()),
+        Value::Dict(values) | Value::SystemDict(values) => values.contains_key(&needle.render()),
         Value::PairList(values) => values.iter().any(|(key, _)| key == &needle.render()),
         _ => false,
     }
@@ -267,7 +267,9 @@ fn coerce_set_like(value: Value) -> Result<Vec<Value>> {
         Value::Shared(value) => coerce_set_like(value.borrow().clone()),
         Value::Set(values) => Ok(values),
         Value::Array(values) | Value::Bag(values) => Ok(unique_values(&values)),
-        Value::Dict(values) => Ok(values.keys().cloned().map(Value::String).collect()),
+        Value::Dict(values) | Value::SystemDict(values) => {
+            Ok(values.keys().cloned().map(Value::String).collect())
+        }
         Value::PairList(values) => Ok(unique_values(
             &values
                 .into_iter()
