@@ -932,10 +932,10 @@ impl Runtime {
     pub fn load_program_without_main(
         &self,
         program: &Program,
-        _source_file: Option<&str>,
+        source_file: Option<&str>,
     ) -> Result<LoadedScript> {
         self.async_executor
-            .enter(|| self.load_program_without_main_inner(program))
+            .enter(|| self.load_program_without_main_inner(program, source_file))
     }
 
     /// Builds a GTK widget preview for Zuzu GUI XML.
@@ -977,6 +977,7 @@ impl Runtime {
         self.emit_semantic_warnings(&program)?;
         let env = Rc::new(Environment::new(None));
         self.install_builtins(&env);
+        self.define_file_const(&env, program.source_file.as_deref(), false);
         match self.eval_program(&program, Rc::clone(&env)) {
             Err(ZuzuRustError::Thrown { value, .. }) => Err(ZuzuRustError::runtime(format!(
                 "uncaught exception: {value}"
@@ -1002,11 +1003,16 @@ impl Runtime {
         }
     }
 
-    fn load_program_without_main_inner(&self, program: &Program) -> Result<LoadedScript> {
+    fn load_program_without_main_inner(
+        &self,
+        program: &Program,
+        source_file: Option<&str>,
+    ) -> Result<LoadedScript> {
         self.reset_top_level_execution_state();
         self.emit_semantic_warnings(program)?;
         let env = Rc::new(Environment::new(None));
         self.install_builtins(&env);
+        self.define_file_const(&env, program.source_file.as_deref().or(source_file), false);
         match self.eval_program(program, Rc::clone(&env)) {
             Err(ZuzuRustError::Thrown { value, .. }) => Err(ZuzuRustError::runtime(format!(
                 "uncaught exception: {value}"
@@ -1833,6 +1839,7 @@ impl Runtime {
             self.emit_semantic_warnings(&program)?;
             let env = Rc::new(Environment::new(None));
             self.install_builtins(&env);
+            self.define_file_const(&env, Some(&source_file), true);
             match self.eval_program(&program, Rc::clone(&env))? {
                 ControlFlow::Normal => {}
                 ControlFlow::Return(_) => {
@@ -2254,6 +2261,34 @@ impl Runtime {
         }
         env.define("__global__".to_owned(), Value::Dict(HashMap::new()), true);
         env.define("__system__".to_owned(), self.current_system_value(), false);
+    }
+
+    fn file_value_for_source(&self, source_file: Option<&str>, force_absolute: bool) -> Value {
+        let Some(source_file) = source_file else {
+            return Value::Null;
+        };
+        if self.is_denied("fs") || source_file.is_empty() || source_file.starts_with('<') {
+            return Value::Null;
+        }
+        let mut path = PathBuf::from(source_file);
+        if force_absolute && !path.is_absolute() {
+            let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            path = absolutize_module_path(path, &base);
+        }
+        stdlib::path_value(path)
+    }
+
+    fn define_file_const(
+        &self,
+        env: &Environment,
+        source_file: Option<&str>,
+        force_absolute: bool,
+    ) {
+        env.define(
+            "__file__".to_owned(),
+            self.file_value_for_source(source_file, force_absolute),
+            false,
+        );
     }
 
     fn eval_arguments(&self, arguments: &[Expression], env: Rc<Environment>) -> Result<Vec<Value>> {

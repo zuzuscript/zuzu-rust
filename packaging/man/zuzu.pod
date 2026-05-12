@@ -1,0 +1,40 @@
+=head1 NAME
+
+zuzu - run ZuzuScript with an available implementation
+
+=head1 SYNOPSIS
+
+zuzu [arguments ...]
+
+=head1 DESCRIPTION
+
+B<zuzu> is a wrapper for selecting and invoking a ZuzuScript implementation.
+It honours the B<ZUZU> environment variable when set to a non-empty value,
+using that command as the preferred implementation.
+
+When B<ZUZU> is not set, B<zuzu> searches C<PATH> for B<zuzu-rust>,
+B<zuzu.pl>, and B<zuzu-js>, in that order. The first available command is
+executed with the original arguments.
+
+If no implementation can be found, B<zuzu> prints an error and exits with
+status 127.
+
+=head1 ENVIRONMENT
+
+=over 4
+
+=item B<ZUZU>
+
+Command used as the preferred ZuzuScript implementation.
+
+=back
+
+=head1 COPYRIGHT AND LICENCE
+
+B<zuzu> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
+=cut

@@ -373,6 +373,7 @@ impl Scope {
             "Boolean",
             "Regexp",
             "Function",
+            "__file__",
             "__global__",
             "__system__",
         ] {

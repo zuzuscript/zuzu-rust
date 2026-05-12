@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  configure)
+    if [ ! -e /usr/bin/zuzu ] && [ ! -L /usr/bin/zuzu ]; then
+      cp /usr/lib/zuzu-rust/zuzu-wrapper /usr/bin/zuzu
+      chmod 0755 /usr/bin/zuzu
+    fi
+
+    if [ -d /usr/share/zuzu-rust/scripts ]; then
+      for script in /usr/share/zuzu-rust/scripts/*; do
+        [ -f "$script" ] || continue
+        name=${script##*/}
+        link=/usr/bin/$name
+        if [ ! -e "$link" ] && [ ! -L "$link" ]; then
+          ln -s "$script" "$link"
+        fi
+      done
+    fi
+    ;;
+esac
+
+exit 0

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 mod archive;
 mod base64;
@@ -67,6 +68,10 @@ pub(super) fn load_runtime_supported_module(name: &str) -> Option<HashMap<String
         "std/data/xml" => Some(xml::exports()),
         _ => None,
     }
+}
+
+pub(super) fn path_value(path: PathBuf) -> Value {
+    io::path_object(path)
 }
 
 pub(super) fn call_native_function(

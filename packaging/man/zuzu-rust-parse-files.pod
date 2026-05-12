@@ -1,0 +1,25 @@
+=head1 NAME
+
+zuzu-rust-parse-files - parse ZuzuScript files
+
+=head1 SYNOPSIS
+
+zuzu-rust-parse-files file-or-directory [...]
+
+=head1 DESCRIPTION
+
+B<zuzu-rust-parse-files> recursively finds C<.zzs> and C<.zzm> files in the
+given paths and checks that each file parses successfully.
+
+The command exits with status 0 when all files parse, status 1 when at least
+one file fails, and status 2 for command-line or filesystem errors.
+
+=head1 COPYRIGHT AND LICENCE
+
+B<zuzu-rust-parse-files> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
+=cut

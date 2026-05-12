@@ -1,0 +1,68 @@
+=head1 NAME
+
+zuzu-rust - run ZuzuScript programs with the Rust runtime
+
+=head1 SYNOPSIS
+
+zuzu-rust [options] path/to/script.zzs [arg ...]
+
+zuzu-rust [options] -e 'code' [arg ...]
+
+=head1 DESCRIPTION
+
+B<zuzu-rust> parses and runs ZuzuScript programs. It can also print a
+machine-readable AST, render parsed code back to ZuzuScript, and start an
+interactive REPL.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-I> I<DIR>
+
+Add a module include directory.
+
+=item B<-e> I<CODE>
+
+Evaluate inline ZuzuScript code.
+
+=item B<-M> I<MODULE>
+
+Preload a module with wildcard import.
+
+=item B<-R>, B<--repl>
+
+Start the interactive REPL.
+
+=item B<--dump-ast>
+
+Print the parsed AST as stable JSON.
+
+=item B<--dump-zuzu>
+
+Print parsed code as ZuzuScript source.
+
+=item B<--deny> I<CAP>, B<--denymodule> I<MODULE>
+
+Deny a runtime capability or module.
+
+=item B<-h>, B<--help>
+
+Show command help.
+
+=back
+
+=head1 ENVIRONMENT
+
+B<ZUZULIB> adds module search paths. B<ZUZU_STDLIB> overrides the installed
+standard library module path.
+
+=head1 COPYRIGHT AND LICENCE
+
+B<zuzu-rust> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
+=cut

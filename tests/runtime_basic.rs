@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -57,6 +58,55 @@ fn host_dict(items: Vec<(&str, HostValue)>) -> HostValue {
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+#[test]
+fn file_global_tracks_source_files_and_fs_denial() {
+    let runtime = Runtime::new(Vec::new());
+    let output = runtime
+        .run_script_source_with_args_and_source_file(
+            r#"say(__file__.to_String());"#,
+            &[],
+            Some("relative-main.zzs"),
+        )
+        .expect("__file__ should be available for a main file");
+    assert_eq!(output.stdout, "relative-main.zzs\n");
+
+    let denied = Runtime::with_policy(Vec::new(), RuntimePolicy::new().deny_capability("fs"));
+    let output = denied
+        .run_script_source_with_args_and_source_file(
+            r#"say(typeof __file__);"#,
+            &[],
+            Some("relative-main.zzs"),
+        )
+        .expect("__file__ should be null when fs is denied");
+    assert_eq!(output.stdout, "Null\n");
+
+    let temp_root =
+        std::env::temp_dir().join(format!("zuzu-rust-file-global-{}", std::process::id()));
+    let module_root = temp_root.join("modules");
+    fs::create_dir_all(&module_root).expect("module dir should be created");
+    let module_path = module_root.join("file_probe.zzm");
+    fs::write(
+        &module_path,
+        r#"const module_file := __file__.to_String();"#,
+    )
+    .expect("module should be written");
+
+    let runtime = Runtime::new(vec![module_root]);
+    let output = runtime
+        .run_script_source_with_args_and_source_file(
+            r#"
+            from file_probe import module_file;
+            say(module_file);
+            "#,
+            &[],
+            Some("main.zzs"),
+        )
+        .expect("module __file__ should be available");
+    assert_eq!(output.stdout, format!("{}\n", module_path.display()));
+
+    let _ = fs::remove_dir_all(temp_root);
 }
 
 #[test]

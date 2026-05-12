@@ -1,0 +1,56 @@
+=head1 NAME
+
+zuzu-rust-server - serve ZuzuScript web applications
+
+=head1 SYNOPSIS
+
+zuzu-rust-server [options] path/to/app.zzs
+
+=head1 DESCRIPTION
+
+B<zuzu-rust-server> runs a ZuzuScript web application using the Rust runtime
+and the ZuzuScript web request protocol.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--listen> I<HOST:PORT>
+
+Set the listen address. The default is C<127.0.0.1:3000>.
+
+=item B<--workers> I<N>
+
+Set the worker count.
+
+=item B<-I> I<DIR>
+
+Add a module include directory.
+
+=item B<--check>
+
+Parse and load the application, then exit.
+
+=item B<--reload>
+
+Reload the application file when it changes.
+
+=item B<--access-log> I<PATH>
+
+Set the access log path, or C<-> for stderr.
+
+=item B<-h>, B<--help>
+
+Show command help.
+
+=back
+
+=head1 COPYRIGHT AND LICENCE
+
+B<zuzu-rust-server> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
+=cut

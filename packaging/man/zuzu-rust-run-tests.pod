@@ -1,0 +1,26 @@
+=head1 NAME
+
+zuzu-rust-run-tests - run ZuzuScript TAP tests
+
+=head1 SYNOPSIS
+
+zuzu-rust-run-tests file-or-directory [...]
+
+=head1 DESCRIPTION
+
+B<zuzu-rust-run-tests> recursively finds C<.zzs> test files, runs them with
+the adjacent B<zuzu-rust> binary, and treats TAP output with a plan and no
+C<not ok> lines as passing.
+
+The command exits with status 0 when all tests pass, status 1 when any test
+fails, and status 2 for command-line or filesystem errors.
+
+=head1 COPYRIGHT AND LICENCE
+
+B<zuzu-rust-run-tests> is copyright Toby Inkster.
+
+It is free software; you may redistribute it and/or modify it under
+the terms of either the Artistic License 1.0 or the GNU General Public
+License version 2.
+
+=cut

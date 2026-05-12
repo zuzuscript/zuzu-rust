@@ -1,0 +1,25 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  remove)
+    if [ -d /usr/share/zuzu-rust/scripts ]; then
+      for script in /usr/share/zuzu-rust/scripts/*; do
+        [ -f "$script" ] || continue
+        name=${script##*/}
+        link=/usr/bin/$name
+        if [ -L "$link" ] && [ "$(readlink "$link")" = "$script" ]; then
+          rm -f "$link"
+        fi
+      done
+    fi
+
+    if [ -f /usr/bin/zuzu ] &&
+      [ -f /usr/lib/zuzu-rust/zuzu-wrapper ] &&
+      cmp -s /usr/bin/zuzu /usr/lib/zuzu-rust/zuzu-wrapper; then
+      rm -f /usr/bin/zuzu
+    fi
+    ;;
+esac
+
+exit 0
