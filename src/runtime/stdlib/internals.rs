@@ -8,6 +8,7 @@ pub(super) fn exports() -> HashMap<String, Value> {
     let mut exports = HashMap::new();
     for func in [
         "class_name",
+        "classof",
         "object_slots",
         "ansi_esc",
         "ref_id",
@@ -55,6 +56,7 @@ pub(super) fn call(
             Value::Pair(_, _) => Value::String("Pair".to_owned()),
             _ => Value::Null,
         }),
+        "classof" => require_arity(name, args, 1).map(|_| classof_value(runtime, &args[0])),
         "object_slots" => require_arity(name, args, 1).map(|_| match &args[0] {
             Value::Object(object) => {
                 let mut map = HashMap::new();
@@ -229,10 +231,36 @@ pub(super) fn call(
     Some(value)
 }
 
+fn classof_value(runtime: &Runtime, value: &Value) -> Value {
+    let value = runtime.deref_value(value).unwrap_or_else(|_| value.clone());
+    match value {
+        Value::Object(object) => Value::UserClass(std::rc::Rc::clone(&object.borrow().class)),
+        Value::Array(_) | Value::SystemArray(_) => Value::builtin_class("Array"),
+        Value::Set(_) => Value::builtin_class("Set"),
+        Value::Bag(_) => Value::builtin_class("Bag"),
+        Value::Dict(_) | Value::SystemDict(_) => Value::builtin_class("Dict"),
+        Value::PairList(_) => Value::builtin_class("PairList"),
+        Value::Pair(_, _) => Value::builtin_class("Pair"),
+        Value::BinaryString(_) => Value::builtin_class("BinaryString"),
+        Value::Regex(_, _) => Value::builtin_class("Regexp"),
+        Value::Function(_) | Value::NativeFunction(_) | Value::Iterator(_) => {
+            Value::builtin_class("Function")
+        }
+        Value::Class(_) | Value::UserClass(_) => Value::builtin_class("Class"),
+        Value::Trait(_) => Value::builtin_class("Trait"),
+        Value::Task(_) => Value::builtin_class("Task"),
+        Value::Channel(_) => Value::builtin_class("Channel"),
+        Value::CancellationSource(_) => Value::builtin_class("CancellationSource"),
+        Value::CancellationToken(_) => Value::builtin_class("CancellationToken"),
+        _ => Value::Null,
+    }
+}
+
 fn is_internal_function(name: &str) -> bool {
     matches!(
         name,
         "class_name"
+            | "classof"
             | "object_slots"
             | "ansi_esc"
             | "ref_id"
