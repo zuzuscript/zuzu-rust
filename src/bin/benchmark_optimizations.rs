@@ -240,13 +240,73 @@ fn benchmark_subject_exe() -> Result<PathBuf, String> {
 }
 
 fn tap_passed(stdout: &str) -> bool {
-    let has_plan = stdout
-        .lines()
-        .any(|line| line.trim_start().starts_with("1.."));
-    let has_not_ok = stdout
-        .lines()
-        .any(|line| line.trim_start().starts_with("not ok"));
-    has_plan && !has_not_ok
+    let mut plan = None;
+    let mut top_level_tests = 0usize;
+    let mut has_top_level_not_ok = false;
+
+    for line in stdout.lines().filter(|line| is_top_level_tap_line(line)) {
+        if line.starts_with("1..") {
+            let Some(count) = parse_plan_count(line) else {
+                return false;
+            };
+            if plan.replace(count).is_some() {
+                return false;
+            }
+        }
+
+        if is_top_level_ok_line(line) {
+            top_level_tests += 1;
+        } else if is_top_level_not_ok_line(line) {
+            top_level_tests += 1;
+            has_top_level_not_ok = true;
+        }
+    }
+
+    matches!(plan, Some(planned) if planned == top_level_tests) && !has_top_level_not_ok
+}
+
+fn is_top_level_tap_line(line: &str) -> bool {
+    !line.starts_with(|ch: char| ch.is_ascii_whitespace())
+}
+
+fn parse_plan_count(line: &str) -> Option<usize> {
+    let rest = line.strip_prefix("1..")?;
+    let digits_len = rest
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if digits_len == 0 {
+        return None;
+    }
+    let (digits, trailing) = rest.split_at(digits_len);
+    if !trailing.is_empty()
+        && !trailing
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_whitespace() || ch == '#')
+    {
+        return None;
+    }
+    digits.parse::<usize>().ok()
+}
+
+fn is_top_level_ok_line(line: &str) -> bool {
+    has_tap_keyword(line, "ok")
+}
+
+fn is_top_level_not_ok_line(line: &str) -> bool {
+    has_tap_keyword(line, "not ok")
+}
+
+fn has_tap_keyword(line: &str, keyword: &str) -> bool {
+    let Some(rest) = line.strip_prefix(keyword) else {
+        return false;
+    };
+    rest.is_empty()
+        || rest
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_whitespace())
 }
 
 fn find_repo_root(start: &Path) -> Result<PathBuf, String> {
