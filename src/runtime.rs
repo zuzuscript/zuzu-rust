@@ -6730,12 +6730,16 @@ impl Runtime {
             (Value::Pair(_, _), Value::Class(name)) => name.as_str() == "Pair",
             (Value::Regex(_, _), Value::Class(name)) => name.as_str() == "Regexp",
             (Value::Object(object), Value::Class(name)) => {
+                let object_class = &object.borrow().class;
                 name.as_str() == "Object"
-                    || self.class_matches(&object.borrow().class, name)
+                    || (object_class.source_decl.is_none() && object_class.name == name.as_str())
                     || matches!(
-                        (self.class_builtin_base_name(&object.borrow().class), name.as_str()),
-                        (Some(base), "Collection")
-                            if matches!(base.as_str(), "Array" | "Set" | "Bag" | "Dict")
+                        (self.class_builtin_base_name(object_class), name.as_str()),
+                        (Some(base), target) if base == target
+                            || (
+                                target == "Collection"
+                                && matches!(base.as_str(), "Array" | "Set" | "Bag" | "Dict")
+                            )
                     )
             }
             (

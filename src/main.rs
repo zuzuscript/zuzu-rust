@@ -524,18 +524,18 @@ fn is_incomplete_parse(err: &ZuzuRustError) -> bool {
 }
 
 fn repl_print_prompt(continuation: bool) -> Result<()> {
-    print!("{}", repl_prompt_colored(continuation));
+    print!("{}", repl_prompt_coloured(continuation));
     io::stdout().flush()?;
     Ok(())
 }
 
-fn repl_prompt_colored(continuation: bool) -> String {
-    let color = if continuation {
+fn repl_prompt_coloured(continuation: bool) -> String {
+    let colour = if continuation {
         "\x1b[1;35m"
     } else {
         "\x1b[1;36m"
     };
-    format!("{color}{}\x1b[0m", repl_prompt_label(continuation))
+    format!("{colour}{}\x1b[0m", repl_prompt_label(continuation))
 }
 
 fn repl_prompt_label(continuation: bool) -> &'static str {

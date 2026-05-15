@@ -355,6 +355,11 @@ impl Scope {
     fn new_root() -> Self {
         let mut names = HashMap::new();
         for builtin in [
+            "Any",
+            "Class",
+            "Null",
+            "Object",
+            "Collection",
             "Exception",
             "AssertionException",
             "TypeException",

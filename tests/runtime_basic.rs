@@ -1657,6 +1657,37 @@ fn runs_type_instanceof_ztest_script() {
 }
 
 #[test]
+fn inline_builtin_instanceof_identifiers_are_in_root_scope() {
+    let runtime = Runtime::new(Vec::new());
+    let output = runtime
+        .run_script_source(
+            r#"
+say( null instanceof Null );
+say( 2 instanceof Number );
+say( "Hello" instanceof String );
+say( true instanceof Boolean );
+say( [] instanceof Object );
+say( [] instanceof Collection );
+say( Number instanceof Class );
+let BuiltinArray := Array;
+let BuiltinDict := Dict;
+{
+	class Array;
+	say( not( new Array() instanceof BuiltinArray ) );
+}
+{
+	class Dict;
+	say( not( new Dict() instanceof BuiltinDict ) );
+}
+"#,
+        )
+        .expect("builtin class identifiers should be available to instanceof");
+
+    assert_eq!(output.stdout, "1\n1\n1\n1\n1\n1\n1\n1\n1\n");
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
 fn runs_type_return_types_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/types/return-types.zzs");
