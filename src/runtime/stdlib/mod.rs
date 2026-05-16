@@ -141,6 +141,7 @@ pub(super) fn call_builtin_class_method(
         .or_else(|| db::call_class_method(runtime, class_name, name, args))
         .or_else(|| bignum::call_class_method(runtime, class_name, name, args))
         .or_else(|| math::call_class_method(runtime, class_name, name, args))
+        .or_else(|| time::call_class_method(runtime, class_name, name, args))
         .or_else(|| secure::call_class_method(runtime, class_name, name, args))
         .or_else(|| net_smtp::call_class_method(class_name, name, args))
         .or_else(|| io::call_class_method(runtime, class_name, name, args))
@@ -155,11 +156,13 @@ pub(super) fn call_builtin_class_method_named(
     args: &[Value],
     named_args: &[(String, Value)],
 ) -> Option<Result<Value>> {
-    worker::call_class_method(runtime, class_name, name, args, named_args)
+    time::call_class_method_named(runtime, class_name, name, args, named_args)
+        .or_else(|| worker::call_class_method(runtime, class_name, name, args, named_args))
 }
 
 pub(super) fn has_builtin_class_method(class_name: &str, name: &str) -> bool {
-    worker::has_class_method(class_name, name)
+    time::has_class_method(class_name, name)
+        || worker::has_class_method(class_name, name)
         || secure::has_class_method(class_name, name)
         || net_smtp::has_class_method(class_name, name)
 }
@@ -246,6 +249,9 @@ pub(super) fn construct_builtin_object(
         "YAML" => Some(yaml::construct_yaml(args, named_args)),
         "CSV" => Some(csv::construct_csv(runtime, args, named_args)),
         "Time" => Some(time::construct_time(runtime, args, named_args)),
+        "TimeZone" => Some(time::construct_time_zone(runtime, args, named_args)),
+        "Duration" => Some(time::construct_duration(runtime, args, named_args)),
+        "TimeFormat" => Some(time::construct_time_format(runtime, args, named_args)),
         "TimeParser" => Some(time::construct_time_parser(args, named_args)),
         "CookieJar" => Some(net_http::construct_cookie_jar(args, named_args)),
         "UserAgent" => Some(net_http::construct_user_agent(args, named_args)),

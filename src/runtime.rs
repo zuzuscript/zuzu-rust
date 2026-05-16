@@ -5682,13 +5682,15 @@ impl Runtime {
                     },
                 ))))
             }
-            "Path" | "JSON" | "YAML" | "CSV" | "Time" | "TimeParser" | "CookieJar"
-            | "UserAgent" | "Mailer" | "CLib" | "Widget" | "Window" | "VBox" | "HBox" | "Frame"
-            | "Label" | "Text" | "RichText" | "Image" | "Input" | "DatePicker" | "Checkbox"
-            | "Radio" | "RadioGroup" | "Select" | "Menu" | "MenuItem" | "Button" | "Separator"
-            | "Slider" | "Progress" | "Tabs" | "Tab" | "ListView" | "TreeView" | "Event"
-            | "ListenerToken" => stdlib::construct_builtin_object(self, name, args, named_args)
-                .unwrap_or_else(|| unreachable!()),
+            "Path" | "JSON" | "YAML" | "CSV" | "Time" | "TimeZone" | "Duration" | "TimeFormat"
+            | "TimeParser" | "CookieJar" | "UserAgent" | "Mailer" | "CLib" | "Widget"
+            | "Window" | "VBox" | "HBox" | "Frame" | "Label" | "Text" | "RichText" | "Image"
+            | "Input" | "DatePicker" | "Checkbox" | "Radio" | "RadioGroup" | "Select" | "Menu"
+            | "MenuItem" | "Button" | "Separator" | "Slider" | "Progress" | "Tabs" | "Tab"
+            | "ListView" | "TreeView" | "Event" | "ListenerToken" => {
+                stdlib::construct_builtin_object(self, name, args, named_args)
+                    .unwrap_or_else(|| unreachable!())
+            }
             "Exception"
             | "ExhaustedException"
             | "TypeException"

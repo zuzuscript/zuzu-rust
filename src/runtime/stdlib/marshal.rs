@@ -376,19 +376,34 @@ fn encode_time_object(
     if !is_new {
         return Ok(strong_ref(id));
     }
-    let epoch = match &object.borrow().builtin_value {
-        Some(Value::Number(epoch)) => *epoch,
+    let (epoch, timezone) = match &object.borrow().builtin_value {
+        Some(Value::Number(epoch)) => (*epoch, None),
+        Some(Value::SystemDict(fields)) => {
+            let epoch = match fields.get("epoch") {
+                Some(Value::Number(epoch)) => *epoch,
+                _ => {
+                    return Err(ZuzuRustError::runtime(
+                        "Time value has invalid internal epoch",
+                    ))
+                }
+            };
+            let timezone = match fields.get("timezone") {
+                Some(Value::String(value)) => Some(value.clone()),
+                _ => None,
+            };
+            (epoch, timezone)
+        }
         _ => {
             return Err(ZuzuRustError::runtime(
                 "Time value has invalid internal epoch",
             ))
         }
     };
-    state.set_object(
-        id,
-        KIND_TIME,
-        CborValue::Array(vec![number_to_cbor(epoch)?]),
-    );
+    let mut payload = vec![number_to_cbor(epoch)?];
+    if let Some(timezone) = timezone {
+        payload.push(CborValue::Text(timezone));
+    }
+    state.set_object(id, KIND_TIME, CborValue::Array(payload));
     Ok(strong_ref(id))
 }
 
@@ -2250,9 +2265,9 @@ fn decode_key_value_record(
 
 fn fill_time_placeholder(id: usize, payload: &CborValue, placeholder: &Value) -> Result<()> {
     let items = expect_array(payload, &format!("Time object payload {id}"))?;
-    if items.len() != 1 {
+    if items.len() != 1 && items.len() != 2 {
         return Err(ZuzuRustError::runtime(format!(
-            "Time object payload {id} must be a one-item array"
+            "Time object payload {id} must contain epoch and optional timezone"
         )));
     }
     let epoch = match items[0] {
@@ -2267,11 +2282,22 @@ fn fill_time_placeholder(id: usize, payload: &CborValue, placeholder: &Value) ->
     let Value::Object(object) = placeholder else {
         return Err(ZuzuRustError::runtime("Time placeholder is not an object"));
     };
+    let timezone = if items.len() > 1 {
+        expect_text(&items[1], &format!("Time object payload {id} timezone"))?.to_owned()
+    } else {
+        "UTC".to_owned()
+    };
     let mut object = object.borrow_mut();
     object
         .fields
         .insert("epoch".to_owned(), Value::Number(epoch));
-    object.builtin_value = Some(Value::Number(epoch));
+    object
+        .fields
+        .insert("timezone".to_owned(), Value::String(timezone.clone()));
+    object.builtin_value = Some(Value::SystemDict(HashMap::from([
+        ("epoch".to_owned(), Value::Number(epoch)),
+        ("timezone".to_owned(), Value::String(timezone)),
+    ])));
     Ok(())
 }
 
