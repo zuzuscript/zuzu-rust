@@ -174,6 +174,7 @@ pub(super) fn call_builtin_object_method(
     builtin_value: &Value,
     name: &str,
     args: &[Value],
+    named_args: &[(String, Value)],
 ) -> Option<Result<Value>> {
     net_http::call_object_method(runtime, object, class_name, builtin_value, name, args)
         .or_else(|| net_smtp::call_object_method(runtime, object, class_name, name, args))
@@ -195,7 +196,9 @@ pub(super) fn call_builtin_object_method(
         .or_else(|| io::call_object_method(runtime, class_name, builtin_value, name, args))
         .or_else(|| csv::call_object_method(runtime, object, class_name, builtin_value, name, args))
         .or_else(|| json::call_object_method(runtime, class_name, builtin_value, name, args))
-        .or_else(|| time::call_object_method(runtime, class_name, builtin_value, name, args))
+        .or_else(|| {
+            time::call_object_method(runtime, class_name, builtin_value, name, args, named_args)
+        })
         .or_else(|| secure::call_object_method(runtime, class_name, builtin_value, name, args))
         .or_else(|| gui::call_object_method(runtime, object, class_name, name, args))
         .or_else(|| xml::call_object_method(runtime, object, class_name, builtin_value, name, args))

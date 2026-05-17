@@ -7115,6 +7115,7 @@ impl Runtime {
                     &builtin_value,
                     name,
                     args,
+                    &named_args,
                 ) {
                     return result;
                 }

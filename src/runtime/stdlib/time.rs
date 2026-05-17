@@ -337,9 +337,16 @@ pub(super) fn call_object_method(
     builtin_value: &Value,
     name: &str,
     args: &[Value],
+    named_args: &[(String, Value)],
 ) -> Option<Result<Value>> {
     match class_name {
-        "Time" => Some(call_time_method(runtime, builtin_value, name, args)),
+        "Time" => Some(call_time_method(
+            runtime,
+            builtin_value,
+            name,
+            args,
+            named_args,
+        )),
         "TimeZone" => Some(call_zone_method(builtin_value, name, args)),
         "Duration" => Some(call_duration_method(builtin_value, name, args)),
         "TimeFormat" => Some(call_format_method(runtime, builtin_value, name, args)),
@@ -419,11 +426,32 @@ pub(super) fn time_object_with_zone(epoch: f64, zone: String) -> Result<Value> {
     Ok(native_object("Time", fields))
 }
 
+fn rfc5322_include_weekday(named_args: &[(String, Value)]) -> Result<bool> {
+    let mut include_weekday = true;
+    for (name, value) in named_args {
+        if name != "include_weekday" {
+            return Err(ZuzuRustError::runtime(format!(
+                "unknown to_rfc5322 option '{name}'"
+            )));
+        }
+        match value {
+            Value::Boolean(value) => include_weekday = *value,
+            _ => {
+                return Err(ZuzuRustError::runtime(
+                    "to_rfc5322 option 'include_weekday' expects Boolean",
+                ))
+            }
+        }
+    }
+    Ok(include_weekday)
+}
+
 fn call_time_method(
     runtime: &Runtime,
     builtin_value: &Value,
     name: &str,
     args: &[Value],
+    named_args: &[(String, Value)],
 ) -> Result<Value> {
     let (epoch, zone_name) = time_parts(builtin_value)?;
     let zone = Zone::parse(&zone_name)?;
@@ -503,7 +531,14 @@ fn call_time_method(
             )))
         }
         "to_iso8601" | "to_rfc3339" => Ok(Value::String(format_rfc3339(epoch, &zone))),
-        "to_rfc5322" => Ok(Value::String(format_rfc5322(epoch, &zone, true))),
+        "to_rfc5322" => {
+            require_arity(name, args, 0)?;
+            Ok(Value::String(format_rfc5322(
+                epoch,
+                &zone,
+                rfc5322_include_weekday(named_args)?,
+            )))
+        }
         "format" => {
             require_arity(name, args, 1)?;
             let (kind, pattern, format_zone) = format_parts(&args[0])?;
@@ -569,11 +604,9 @@ fn call_format_method(
         "parse" => {
             require_arity(name, args, 1)?;
             let (_kind, _pattern, format_zone) = format_raw_parts(builtin_value)?;
-            let zone = format_zone
-                .ok_or_else(|| ZuzuRustError::runtime("TimeFormat.parse() requires a timezone"))?;
             let (epoch, parsed_zone) =
-                parse_time_text(&runtime.render_value(&args[0])?, Some(zone.clone()), true)?;
-            time_object_with_zone(epoch, if zone.is_empty() { parsed_zone } else { zone })
+                parse_time_text(&runtime.render_value(&args[0])?, format_zone.clone(), true)?;
+            time_object_with_zone(epoch, format_zone.unwrap_or(parsed_zone))
         }
         _ => Err(ZuzuRustError::runtime(format!(
             "unsupported TimeFormat method '{name}'"
@@ -644,6 +677,68 @@ fn parse_time_static(
     time_object_with_zone(epoch, zone.unwrap_or(parsed_zone))
 }
 
+fn strip_trailing_period(value: &str) -> String {
+    value.trim_end_matches('.').to_ascii_lowercase()
+}
+
+fn valid_weekday_name(value: &str) -> bool {
+    matches!(
+        strip_trailing_period(value).as_str(),
+        "sun"
+            | "sunday"
+            | "mon"
+            | "monday"
+            | "tue"
+            | "tues"
+            | "tuesday"
+            | "wed"
+            | "weds"
+            | "wednesday"
+            | "thu"
+            | "thur"
+            | "thurs"
+            | "thursday"
+            | "fri"
+            | "friday"
+            | "sat"
+            | "saturday"
+    )
+}
+
+fn parse_rfc5322_zone(value: &str) -> Option<FixedOffset> {
+    if let Some(offset) = parse_offset(value) {
+        return Some(offset);
+    }
+    let key = value.to_ascii_uppercase();
+    let seconds = match key.as_str() {
+        "EST" => -5 * 3600,
+        "EDT" => -4 * 3600,
+        "CST" => -6 * 3600,
+        "CDT" => -5 * 3600,
+        "MST" => -7 * 3600,
+        "MDT" => -6 * 3600,
+        "PST" => -8 * 3600,
+        "PDT" => -7 * 3600,
+        _ => {
+            if key.len() == 1 && key != "J" && key.chars().all(|ch| ch.is_ascii_uppercase()) {
+                let pos = "ABCDEFGHIKLMNOPQRSTUVWXYZ".find(&key)? as i32;
+                if pos < 12 {
+                    (pos + 1) * 3600
+                } else {
+                    -(pos - 11) * 3600
+                }
+            } else {
+                return None;
+            }
+        }
+    };
+    if seconds < 0 {
+        FixedOffset::west_opt(-seconds)
+    } else {
+        FixedOffset::east_opt(seconds)
+    }
+}
+
 fn parse_time_text(
     text: &str,
     default_zone: Option<String>,
@@ -658,7 +753,7 @@ fn parse_time_text(
         let zone_name = if let Some(offset) = captures.get(7) {
             format_offset(
                 parse_offset(offset.as_str())
-                    .ok_or_else(|| ZuzuRustError::runtime("invalid timezone offset"))?
+                    .ok_or_else(|| ZuzuRustError::runtime("invalid time zone"))?
                     .local_minus_utc(),
                 true,
             )
@@ -683,29 +778,54 @@ fn parse_time_text(
                 .unwrap_or(0),
             fraction: 0.0,
         };
+        if parts.hour > 23 || parts.minute > 59 || parts.second > 59 {
+            return Err(ZuzuRustError::runtime("invalid time"));
+        }
+        if parts.day < 1 || parts.day > days_in_month(parts.year, parts.month) {
+            return Err(ZuzuRustError::runtime("invalid date"));
+        }
         return Ok((
             same_wall_epoch(parts, &Zone::parse(&zone_name)?)?,
             zone_name,
         ));
     }
-    let mail = regex::Regex::new(r"(?i)^(?:[A-Za-z]{3},\s*)?(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})\s+(\d\d):(\d\d)(?::(\d\d))?\s+(Z|[+-]\d\d:?\d\d|UT|UTC|GMT)$")
+    let mail = regex::Regex::new(r"(?i)^(?:([A-Za-z.]+),\s*)?(\d{1,2})\s+([A-Za-z.]+)\s+(\d{2}|\d{4})\s+(\d{1,2}):(\d\d)(?::(\d\d))?\s+([+-]\d\d:?\d\d|[A-Za-z]{1,5})$")
         .map_err(|_| ZuzuRustError::runtime("invalid RFC time regex"))?;
     if let Some(captures) = mail.captures(text) {
-        let offset = parse_offset(&captures[7])
-            .ok_or_else(|| ZuzuRustError::runtime("invalid timezone offset"))?;
+        if let Some(weekday) = captures.get(1) {
+            if !valid_weekday_name(weekday.as_str()) {
+                return Err(ZuzuRustError::runtime("invalid weekday"));
+            }
+        }
+        let offset = parse_rfc5322_zone(&captures[8])
+            .ok_or_else(|| ZuzuRustError::runtime("invalid time zone"))?;
         let zone_name = format_offset(offset.local_minus_utc(), true);
+        let raw_year = &captures[4];
+        let mut year = raw_year.parse::<i32>().unwrap_or(1970);
+        if raw_year.len() == 2 {
+            year += if year >= 50 { 1900 } else { 2000 };
+        }
         let parts = WallParts {
-            year: captures[3].parse().unwrap_or(1970),
-            month: month_number(&captures[2])?,
-            day: captures[1].parse().unwrap_or(1),
-            hour: captures[4].parse().unwrap_or(0),
-            minute: captures[5].parse().unwrap_or(0),
+            year,
+            month: month_number(&captures[3])?,
+            day: captures[2].parse().unwrap_or(1),
+            hour: captures[5].parse().unwrap_or(0),
+            minute: captures[6].parse().unwrap_or(0),
             second: captures
-                .get(6)
+                .get(7)
                 .and_then(|m| m.as_str().parse().ok())
                 .unwrap_or(0),
             fraction: 0.0,
         };
+        if parts.year < 1 {
+            return Err(ZuzuRustError::runtime("invalid year"));
+        }
+        if parts.hour > 23 || parts.minute > 59 || parts.second > 59 {
+            return Err(ZuzuRustError::runtime("invalid time"));
+        }
+        if parts.day < 1 || parts.day > days_in_month(parts.year, parts.month) {
+            return Err(ZuzuRustError::runtime("invalid date"));
+        }
         return Ok((
             same_wall_epoch(parts, &Zone::parse(&zone_name)?)?,
             zone_name,
@@ -835,6 +955,9 @@ fn add_months(parts: WallParts, months: i32) -> WallParts {
 }
 
 fn days_in_month(year: i32, month: u32) -> u32 {
+    if !(1..=12).contains(&month) {
+        return 0;
+    }
     let (next_year, next_month) = if month == 12 {
         (year + 1, 1)
     } else {
@@ -1141,19 +1264,19 @@ fn format_offset(seconds: i32, colon: bool) -> String {
 }
 
 fn month_number(name: &str) -> Result<u32> {
-    match &name.to_ascii_lowercase()[..3] {
-        "jan" => Ok(1),
-        "feb" => Ok(2),
-        "mar" => Ok(3),
-        "apr" => Ok(4),
+    match strip_trailing_period(name).as_str() {
+        "jan" | "january" => Ok(1),
+        "feb" | "february" => Ok(2),
+        "mar" | "march" => Ok(3),
+        "apr" | "april" => Ok(4),
         "may" => Ok(5),
-        "jun" => Ok(6),
-        "jul" => Ok(7),
-        "aug" => Ok(8),
-        "sep" => Ok(9),
-        "oct" => Ok(10),
-        "nov" => Ok(11),
-        "dec" => Ok(12),
+        "jun" | "june" => Ok(6),
+        "jul" | "july" => Ok(7),
+        "aug" | "august" => Ok(8),
+        "sep" | "sept" | "september" => Ok(9),
+        "oct" | "october" => Ok(10),
+        "nov" | "november" => Ok(11),
+        "dec" | "december" => Ok(12),
         _ => Err(ZuzuRustError::runtime("Error parsing time")),
     }
 }
