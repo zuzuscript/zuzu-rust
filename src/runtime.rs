@@ -300,7 +300,7 @@ struct FunctionValue {
     name: Option<String>,
     params: Vec<Parameter>,
     return_type: Option<String>,
-    body: FunctionBody,
+    body: Rc<RefCell<FunctionBody>>,
     env: Rc<Environment>,
     is_async: bool,
     current_method: Option<Rc<MethodValue>>,
@@ -308,6 +308,8 @@ struct FunctionValue {
 
 #[derive(Clone)]
 enum FunctionBody {
+    Bodyless,
+    Forward(Rc<FunctionValue>),
     Block(BlockStatement),
     Expression(Expression),
 }
@@ -343,6 +345,7 @@ struct MethodValue {
     #[allow(dead_code)]
     is_static: bool,
     is_async: bool,
+    is_bodyless: bool,
     bound_receiver: Option<Value>,
     bound_name: Option<String>,
 }
@@ -1163,6 +1166,32 @@ impl Runtime {
             Statement::FunctionDeclaration(node) => {
                 let func = self.make_function_from_decl(node, Rc::clone(&env));
                 let value = Value::Function(Rc::new(func));
+                if node.is_predeclared {
+                    if env.get_here(&node.name).is_some() {
+                        return Err(ZuzuRustError::runtime(format!(
+                            "Redeclaration of '{}' in the same scope",
+                            node.name
+                        )));
+                    }
+                    env.define(node.name.clone(), value.clone(), false);
+                    return Ok(value);
+                }
+                if let Some(Value::Function(existing)) = env.get_here(&node.name) {
+                    if matches!(*existing.body.borrow(), FunctionBody::Bodyless) {
+                        *existing.body.borrow_mut() =
+                            FunctionBody::Forward(Rc::clone(match &value {
+                                Value::Function(function) => function,
+                                _ => unreachable!(),
+                            }));
+                        return Ok(Value::Function(existing));
+                    }
+                }
+                if env.get_here(&node.name).is_some() {
+                    return Err(ZuzuRustError::runtime(format!(
+                        "Redeclaration of '{}' in the same scope",
+                        node.name
+                    )));
+                }
                 env.define(node.name.clone(), value.clone(), false);
                 Ok(value)
             }
@@ -1176,10 +1205,7 @@ impl Runtime {
                 let mut methods = HashMap::new();
                 for member in &node.body {
                     if let ClassMember::Method(method) = member {
-                        methods.insert(
-                            method.name.clone(),
-                            Rc::new(self.make_method_from_decl(method, Rc::clone(&env))),
-                        );
+                        self.install_method_decl(&mut methods, method, Rc::clone(&env))?;
                     }
                 }
                 let value = Value::Trait(Rc::new(TraitValue {
@@ -1270,7 +1296,34 @@ impl Runtime {
             }
             Statement::FunctionDeclaration(node) => {
                 let func = self.make_function_from_decl(node, Rc::clone(&env));
-                env.define(node.name.clone(), Value::Function(Rc::new(func)), false);
+                let value = Value::Function(Rc::new(func));
+                if node.is_predeclared {
+                    if env.get_here(&node.name).is_some() {
+                        return Err(ZuzuRustError::runtime(format!(
+                            "Redeclaration of '{}' in the same scope",
+                            node.name
+                        )));
+                    }
+                    env.define(node.name.clone(), value, false);
+                    return Ok(ControlFlow::Normal);
+                }
+                if let Some(Value::Function(existing)) = env.get_here(&node.name) {
+                    if matches!(*existing.body.borrow(), FunctionBody::Bodyless) {
+                        *existing.body.borrow_mut() =
+                            FunctionBody::Forward(Rc::clone(match &value {
+                                Value::Function(function) => function,
+                                _ => unreachable!(),
+                            }));
+                        return Ok(ControlFlow::Normal);
+                    }
+                }
+                if env.get_here(&node.name).is_some() {
+                    return Err(ZuzuRustError::runtime(format!(
+                        "Redeclaration of '{}' in the same scope",
+                        node.name
+                    )));
+                }
+                env.define(node.name.clone(), value, false);
                 Ok(ControlFlow::Normal)
             }
             Statement::ClassDeclaration(node) => {
@@ -2090,7 +2143,11 @@ impl Runtime {
             name: Some(node.name.clone()),
             params: node.params.clone(),
             return_type: node.return_type.clone(),
-            body: FunctionBody::Block(node.body.clone()),
+            body: Rc::new(RefCell::new(if node.is_predeclared {
+                FunctionBody::Bodyless
+            } else {
+                FunctionBody::Block(node.body.clone())
+            })),
             env,
             is_async: node.is_async,
             current_method: None,
@@ -2138,12 +2195,14 @@ impl Runtime {
         for member in &node.body {
             match member {
                 ClassMember::Method(method) => {
-                    let method_value =
-                        Rc::new(self.make_method_from_decl(method, Rc::clone(&class_env)));
                     if method.is_static {
-                        static_methods.insert(method.name.clone(), method_value);
+                        self.install_method_decl(
+                            &mut static_methods,
+                            method,
+                            Rc::clone(&class_env),
+                        )?;
                     } else {
-                        methods.insert(method.name.clone(), method_value);
+                        self.install_method_decl(&mut methods, method, Rc::clone(&class_env))?;
                     }
                 }
                 ClassMember::Field(_) | ClassMember::Class(_) | ClassMember::Trait(_) => {}
@@ -2196,8 +2255,43 @@ impl Runtime {
             env,
             is_static: node.is_static,
             is_async: node.is_async,
+            is_bodyless: node.is_predeclared,
             bound_receiver: None,
             bound_name: None,
+        }
+    }
+
+    fn install_method_decl(
+        &self,
+        methods: &mut HashMap<String, Rc<MethodValue>>,
+        node: &MethodDeclaration,
+        env: Rc<Environment>,
+    ) -> Result<()> {
+        if let Some(existing) = methods.get(&node.name) {
+            if existing.is_bodyless && !node.is_predeclared {
+                methods.insert(
+                    node.name.clone(),
+                    Rc::new(self.make_method_from_decl(node, env)),
+                );
+                return Ok(());
+            }
+            return Err(ZuzuRustError::runtime(format!(
+                "Redeclaration of '{}' in the same scope",
+                node.name
+            )));
+        }
+        methods.insert(
+            node.name.clone(),
+            Rc::new(self.make_method_from_decl(node, env)),
+        );
+        Ok(())
+    }
+
+    fn function_body_for_method(&self, method: &MethodValue) -> FunctionBody {
+        if method.is_bodyless {
+            FunctionBody::Bodyless
+        } else {
+            FunctionBody::Block(method.body.clone())
         }
     }
 
@@ -2722,7 +2816,7 @@ impl Runtime {
                 name: None,
                 params: params.clone(),
                 return_type: return_type.clone(),
-                body: FunctionBody::Block(body.clone()),
+                body: Rc::new(RefCell::new(FunctionBody::Block(body.clone()))),
                 env,
                 is_async: *is_async,
                 current_method: None,
@@ -2736,7 +2830,7 @@ impl Runtime {
                 name: None,
                 params: params.clone(),
                 return_type: None,
-                body: FunctionBody::Expression((**body).clone()),
+                body: Rc::new(RefCell::new(FunctionBody::Expression((**body).clone()))),
                 env,
                 is_async: *is_async,
                 current_method: None,
@@ -3563,7 +3657,7 @@ impl Runtime {
                         default_value: None,
                     }],
                     return_type: None,
-                    body: FunctionBody::Expression((**right).clone()),
+                    body: Rc::new(RefCell::new(FunctionBody::Expression((**right).clone()))),
                     env,
                     is_async: false,
                     current_method: None,
@@ -4931,7 +5025,7 @@ impl Runtime {
             name: Some(method.name.clone()),
             params: method.params.clone(),
             return_type: method.return_type.clone(),
-            body: FunctionBody::Block(method.body.clone()),
+            body: Rc::new(RefCell::new(self.function_body_for_method(method))),
             env: field_env,
             is_async: method.is_async,
             current_method: Some(Rc::clone(&method)),
@@ -5072,7 +5166,7 @@ impl Runtime {
             name: Some(method.name.clone()),
             params: method.params.clone(),
             return_type: method.return_type.clone(),
-            body: FunctionBody::Block(method.body.clone()),
+            body: Rc::new(RefCell::new(self.function_body_for_method(method))),
             env: Rc::clone(&field_env),
             is_async: method.is_async,
             current_method: Some(Rc::clone(method)),
@@ -5111,6 +5205,16 @@ impl Runtime {
         args: Vec<Value>,
         named_args: Vec<(String, Value)>,
     ) -> Result<Value> {
+        let forwarded = {
+            let body = function.body.borrow();
+            match &*body {
+                FunctionBody::Forward(target) => Some(Rc::clone(target)),
+                _ => None,
+            }
+        };
+        if let Some(target) = forwarded {
+            return self.call_function(&target, args, named_args);
+        }
         let function_id = function as *const FunctionValue as usize;
         if function.is_async && !self.running_async_functions.borrow().contains(&function_id) {
             return Ok(self.task_from_function(Rc::new(function.clone()), args, named_args));
@@ -5137,10 +5241,24 @@ impl Runtime {
         args: Vec<Value>,
         named_args: Vec<(String, Value)>,
     ) -> Result<AsyncPoll> {
-        let FunctionBody::Block(body) = &function.body else {
-            return self
-                .run_async_function_body(function, args, named_args)
-                .map(AsyncPoll::Complete);
+        let body = match &*function.body.borrow() {
+            FunctionBody::Block(body) => body.clone(),
+            FunctionBody::Forward(target) => {
+                return self
+                    .run_async_function_body(target, args, named_args)
+                    .map(AsyncPoll::Complete);
+            }
+            FunctionBody::Expression(_) => {
+                return self
+                    .run_async_function_body(function, args, named_args)
+                    .map(AsyncPoll::Complete);
+            }
+            FunctionBody::Bodyless => {
+                return Err(ZuzuRustError::runtime(format!(
+                    "Function '{}' has no body",
+                    function.name.as_deref().unwrap_or("<anon>")
+                )));
+            }
         };
 
         let call_env = Rc::new(Environment::new(Some(Rc::clone(&function.env))));
@@ -5149,7 +5267,7 @@ impl Runtime {
         call_env.define("__argc__".to_owned(), Value::Number(argc as f64), false);
 
         self.poll_async_frames(vec![AsyncFrame::Function {
-            statements: body.statements.clone(),
+            statements: body.statements,
             index: 0,
             env: call_env,
             return_type: function.return_type.clone(),
@@ -5362,6 +5480,16 @@ impl Runtime {
         args: Vec<Value>,
         named_args: Vec<(String, Value)>,
     ) -> Result<Value> {
+        let forwarded = {
+            let body = function.body.borrow();
+            match &*body {
+                FunctionBody::Forward(target) => Some(Rc::clone(target)),
+                _ => None,
+            }
+        };
+        if let Some(target) = forwarded {
+            return self.call_function(&target, args, named_args);
+        }
         let call_env = Rc::new(Environment::new(Some(Rc::clone(&function.env))));
         self.push_special_props_scope();
         if let Some(method) = &function.current_method {
@@ -5374,12 +5502,20 @@ impl Runtime {
             self.bind_function_params(function, &call_env, args, named_args)?;
             call_env.define("__argc__".to_owned(), Value::Number(argc as f64), false);
 
-            let flow = match &function.body {
+            let body = function.body.borrow().clone();
+            let flow = match body {
+                FunctionBody::Bodyless => {
+                    return Err(ZuzuRustError::runtime(format!(
+                        "Function '{}' has no body",
+                        function.name.as_deref().unwrap_or("<anon>")
+                    )));
+                }
+                FunctionBody::Forward(_) => unreachable!(),
                 FunctionBody::Block(body) => {
                     self.eval_function_statements(&body.statements, Rc::clone(&call_env))?
                 }
                 FunctionBody::Expression(expr) => {
-                    ControlFlow::Return(self.eval_expression(expr, Rc::clone(&call_env))?)
+                    ControlFlow::Return(self.eval_expression(&expr, Rc::clone(&call_env))?)
                 }
             };
             self.cleanup_scope(&call_env)?;
@@ -5939,6 +6075,7 @@ impl Runtime {
                     env: Rc::clone(&method.env),
                     is_static: method.is_static,
                     is_async: method.is_async,
+                    is_bodyless: method.is_bodyless,
                     bound_receiver: Some(receiver),
                     bound_name: Some(method_name.to_owned()),
                 })))
@@ -5957,6 +6094,7 @@ impl Runtime {
                     env: Rc::clone(&method.env),
                     is_static: method.is_static,
                     is_async: method.is_async,
+                    is_bodyless: method.is_bodyless,
                     bound_receiver: Some(receiver),
                     bound_name: Some(method_name.to_owned()),
                 })))
@@ -7727,6 +7865,13 @@ impl Environment {
             .and_then(|parent| parent.get_optional(name))
     }
 
+    fn get_here(&self, name: &str) -> Option<Value> {
+        self.bindings
+            .borrow()
+            .get(name)
+            .map(|binding| binding.value.clone())
+    }
+
     fn find_binding(&self, name: &str) -> Option<Binding> {
         if let Some(binding) = self.bindings.borrow().get(name) {
             return Some(binding.clone());
@@ -8497,6 +8642,7 @@ mod weak_classification_tests {
             env,
             is_static: false,
             is_async: false,
+            is_bodyless: false,
             bound_receiver: None,
             bound_name: None,
         })
@@ -8546,7 +8692,7 @@ mod weak_classification_tests {
             name: Some("f".to_owned()),
             params: Vec::new(),
             return_type: None,
-            body: FunctionBody::Block(empty_block()),
+            body: Rc::new(RefCell::new(FunctionBody::Block(empty_block()))),
             env: Rc::clone(&env),
             is_async: false,
             current_method: None,

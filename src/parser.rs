@@ -161,6 +161,15 @@ impl Parser {
         })
     }
 
+    fn empty_block_statement(&self, line: usize) -> BlockStatement {
+        BlockStatement {
+            line,
+            source_file: self.source_file(),
+            statements: Vec::new(),
+            needs_lexical_scope: true,
+        }
+    }
+
     fn parse_variable_declaration(&mut self) -> Result<VariableDeclaration> {
         let line = self.current_line();
         let kind = self.expect_keyword_any(&["let", "const"])?;
@@ -190,6 +199,18 @@ impl Parser {
         let is_async = self.match_keyword("async");
         self.expect_keyword("function")?;
         let name = self.expect_name("Expected function name")?;
+        if self.match_punct(';') {
+            return Ok(FunctionDeclaration {
+                line,
+                source_file: self.source_file(),
+                name,
+                params: Vec::new(),
+                return_type: None,
+                body: self.empty_block_statement(line),
+                is_async,
+                is_predeclared: true,
+            });
+        }
         let params = self.parse_parameter_list()?;
         let return_type = self.parse_optional_return_type()?;
         let body = self.parse_block_statement()?;
@@ -201,6 +222,7 @@ impl Parser {
             return_type,
             body,
             is_async,
+            is_predeclared: false,
         })
     }
 
@@ -326,6 +348,19 @@ impl Parser {
         }
         self.expect_keyword("method")?;
         let name = self.expect_name("Expected method name")?;
+        if self.match_punct(';') {
+            return Ok(MethodDeclaration {
+                line,
+                source_file: self.source_file(),
+                name,
+                params: Vec::new(),
+                return_type: None,
+                body: self.empty_block_statement(line),
+                is_static,
+                is_async,
+                is_predeclared: true,
+            });
+        }
         let params = self.parse_parameter_list()?;
         let return_type = self.parse_optional_return_type()?;
         let body = self.parse_block_statement()?;
@@ -338,6 +373,7 @@ impl Parser {
             body,
             is_static,
             is_async,
+            is_predeclared: false,
         })
     }
 

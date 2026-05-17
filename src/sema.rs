@@ -349,6 +349,7 @@ struct Scope {
 #[derive(Clone, Copy)]
 struct BindingInfo {
     mutable: bool,
+    bodyless_function: bool,
 }
 
 impl Scope {
@@ -382,7 +383,13 @@ impl Scope {
             "__global__",
             "__system__",
         ] {
-            names.insert(builtin.to_owned(), BindingInfo { mutable: false });
+            names.insert(
+                builtin.to_owned(),
+                BindingInfo {
+                    mutable: false,
+                    bodyless_function: false,
+                },
+            );
         }
         Self {
             names,
@@ -418,8 +425,12 @@ impl Validator {
                 self.declare_name(&node.name, node.line, node.kind != "const")
             }
             Statement::FunctionDeclaration(node) => {
-                self.declare_name(&node.name, node.line, false)?;
-                self.validate_function(node)
+                self.declare_function_name(node)?;
+                if node.is_predeclared {
+                    Ok(())
+                } else {
+                    self.validate_function(node)
+                }
             }
             Statement::ClassDeclaration(node) => {
                 self.declare_name(&node.name, node.line, false)?;
@@ -585,7 +596,7 @@ impl Validator {
 
     fn validate_class(&mut self, node: &ClassDeclaration) -> Result<()> {
         self.with_scope(|this| {
-            let mut method_names = HashSet::new();
+            let mut method_names = HashMap::new();
             let mut type_member_names = HashSet::new();
             for member in &node.body {
                 match member {
@@ -604,13 +615,10 @@ impl Validator {
                         this.declare_name(&field.name, field.line, field.kind != "const")?;
                     }
                     ClassMember::Method(method) => {
-                        if !method_names.insert(method.name.clone()) {
-                            return Err(ZuzuRustError::semantic(
-                                format!("Redeclaration of '{}' in the same scope", method.name),
-                                method.line,
-                            ));
+                        Self::record_method_declaration(&mut method_names, method)?;
+                        if !method.is_predeclared {
+                            this.validate_method(method)?;
                         }
-                        this.validate_method(method)?;
                     }
                     ClassMember::Class(class_decl) => {
                         if !type_member_names.insert(class_decl.name.clone()) {
@@ -638,11 +646,14 @@ impl Validator {
 
     fn validate_trait(&mut self, node: &TraitDeclaration) -> Result<()> {
         self.with_scope(|this| {
+            let mut method_names = HashMap::new();
             for member in &node.body {
                 match member {
                     ClassMember::Method(method) => {
-                        this.declare_name(&method.name, method.line, false)?;
-                        this.validate_method(method)?;
+                        Self::record_method_declaration(&mut method_names, method)?;
+                        if !method.is_predeclared {
+                            this.validate_method(method)?;
+                        }
                     }
                     ClassMember::Class(class_decl) => {
                         this.declare_name(&class_decl.name, class_decl.line, false)?;
@@ -662,6 +673,26 @@ impl Validator {
             }
             Ok(())
         })
+    }
+
+    fn record_method_declaration(
+        method_names: &mut HashMap<String, bool>,
+        method: &MethodDeclaration,
+    ) -> Result<()> {
+        match method_names.get_mut(&method.name) {
+            Some(bodyless) if *bodyless && !method.is_predeclared => {
+                *bodyless = false;
+                Ok(())
+            }
+            Some(_) => Err(ZuzuRustError::semantic(
+                format!("Redeclaration of '{}' in the same scope", method.name),
+                method.line,
+            )),
+            None => {
+                method_names.insert(method.name.clone(), method.is_predeclared);
+                Ok(())
+            }
+        }
     }
 
     fn validate_method(&mut self, node: &MethodDeclaration) -> Result<()> {
@@ -1055,7 +1086,38 @@ impl Validator {
                 line,
             ));
         }
-        scope.names.insert(name.to_owned(), BindingInfo { mutable });
+        scope.names.insert(
+            name.to_owned(),
+            BindingInfo {
+                mutable,
+                bodyless_function: false,
+            },
+        );
+        Ok(())
+    }
+
+    fn declare_function_name(&mut self, node: &FunctionDeclaration) -> Result<()> {
+        let scope = self
+            .scopes
+            .last_mut()
+            .expect("scope stack should not be empty");
+        if let Some(existing) = scope.names.get_mut(&node.name) {
+            if existing.bodyless_function && !node.is_predeclared {
+                existing.bodyless_function = false;
+                return Ok(());
+            }
+            return Err(ZuzuRustError::semantic(
+                format!("Redeclaration of '{}' in the same scope", node.name),
+                node.line,
+            ));
+        }
+        scope.names.insert(
+            node.name.clone(),
+            BindingInfo {
+                mutable: false,
+                bodyless_function: node.is_predeclared,
+            },
+        );
         Ok(())
     }
 

@@ -56,6 +56,7 @@ pub struct FunctionDeclaration {
     pub return_type: Option<String>,
     pub body: BlockStatement,
     pub is_async: bool,
+    pub is_predeclared: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,6 +110,7 @@ pub struct MethodDeclaration {
     pub body: BlockStatement,
     pub is_static: bool,
     pub is_async: bool,
+    pub is_predeclared: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -721,6 +723,7 @@ impl FunctionDeclaration {
         write_number_field(out, indent + 1, "line", self.line, true);
         write_string_field(out, indent + 1, "name", &self.name, true);
         write_bool_field(out, indent + 1, "is_async", self.is_async, true);
+        write_bool_field(out, indent + 1, "is_predeclared", self.is_predeclared, true);
         write_optional_string_field(
             out,
             indent + 1,
@@ -846,6 +849,7 @@ impl MethodDeclaration {
         write_string_field(out, indent + 1, "name", &self.name, true);
         write_bool_field(out, indent + 1, "is_static", self.is_static, true);
         write_bool_field(out, indent + 1, "is_async", self.is_async, true);
+        write_bool_field(out, indent + 1, "is_predeclared", self.is_predeclared, true);
         write_optional_string_field(
             out,
             indent + 1,

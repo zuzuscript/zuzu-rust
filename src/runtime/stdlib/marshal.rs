@@ -905,7 +905,11 @@ fn trait_initial_bindings(node: &TraitDeclaration) -> HashSet<String> {
 fn collect_function_free_names(function: &FunctionValue) -> Result<HashSet<String>> {
     let mut bound = function_initial_bindings(function);
     let mut free = HashSet::new();
-    match &function.body {
+    match &*function.body.borrow() {
+        FunctionBody::Bodyless => {}
+        FunctionBody::Forward(target) => {
+            return collect_function_free_names(target);
+        }
         FunctionBody::Block(block) => collect_free_names_from_block(block, &mut bound, &mut free)?,
         FunctionBody::Expression(expr) => collect_free_names_from_expr(expr, &bound, &mut free)?,
     }
@@ -2456,7 +2460,9 @@ fn render_function_value(function: &FunctionValue) -> String {
         out.push_str(return_type);
     }
     out.push(' ');
-    match &function.body {
+    match &*function.body.borrow() {
+        FunctionBody::Bodyless => out.push_str("{ die \"Function has no body\"; }"),
+        FunctionBody::Forward(target) => return render_function_value(target),
         FunctionBody::Block(block) => out.push_str(&render_block(block)),
         FunctionBody::Expression(expression) => {
             out.push_str("{ return ");

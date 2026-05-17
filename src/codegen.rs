@@ -260,6 +260,10 @@ fn render_function_declaration_into(node: &FunctionDeclaration, indent: usize, o
     }
     out.push_str("function ");
     out.push_str(&node.name);
+    if node.is_predeclared {
+        out.push(';');
+        return;
+    }
     out.push(' ');
     render_parameter_list(&node.params, out);
     render_return_type(node.return_type.as_deref(), out);
@@ -351,6 +355,10 @@ fn render_method_declaration(method: &MethodDeclaration, indent: usize, out: &mu
     }
     out.push_str("method ");
     out.push_str(&method.name);
+    if method.is_predeclared {
+        out.push(';');
+        return;
+    }
     out.push(' ');
     render_parameter_list(&method.params, out);
     render_return_type(method.return_type.as_deref(), out);
