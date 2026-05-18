@@ -2932,7 +2932,14 @@ impl Runtime {
                 Ok(())
             }
             Value::Dict(values) | Value::SystemDict(values) => {
-                named.extend(values);
+                let mut keys: Vec<_> = values.keys().cloned().collect();
+                keys.sort();
+                for key in keys {
+                    named.push((
+                        key.clone(),
+                        values.get(&key).cloned().unwrap_or(Value::Null),
+                    ));
+                }
                 Ok(())
             }
             Value::PairList(values) => {
@@ -3005,6 +3012,11 @@ impl Runtime {
                     }
                 }
                 Ok(Value::Array(values))
+            }
+            "default" => {
+                let lhs = self.eval_expression(left, Rc::clone(&env))?;
+                let rhs = self.eval_expression(right, env)?;
+                self.eval_default_operator(lhs, rhs)
             }
             "_" => {
                 let lhs = self.eval_expression(left, Rc::clone(&env))?;
@@ -3209,6 +3221,93 @@ impl Runtime {
             other => Err(ZuzuRustError::runtime(format!(
                 "unsupported binary operator '{}'",
                 other
+            ))),
+        }
+    }
+
+    fn eval_default_operator(&self, lhs: Value, rhs: Value) -> Result<Value> {
+        let lhs = self.deref_value(&lhs)?;
+        let rhs = self.deref_value(&rhs)?;
+        let rhs_type = rhs.type_name();
+        match lhs {
+            Value::Dict(mut values) | Value::SystemDict(mut values) => {
+                match rhs {
+                    Value::Dict(defaults) | Value::SystemDict(defaults) => {
+                        let mut keys: Vec<_> = defaults.keys().cloned().collect();
+                        keys.sort();
+                        for key in keys {
+                            if !values.contains_key(&key) {
+                                values.insert(
+                                    key.clone(),
+                                    defaults.get(&key).cloned().unwrap_or(Value::Null),
+                                );
+                            }
+                        }
+                    }
+                    Value::PairList(defaults) => {
+                        for (key, value) in defaults {
+                            if !values.contains_key(&key) {
+                                values.insert(key, value);
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(ZuzuRustError::runtime(format!(
+                            "default operator right operand expects Dict or PairList, got {rhs_type}"
+                        )));
+                    }
+                }
+                Ok(Value::Dict(values))
+            }
+            Value::PairList(mut values) => {
+                let original_keys: HashSet<_> = values.iter().map(|(key, _)| key.clone()).collect();
+                self.append_pairlist_defaults(&mut values, &original_keys, rhs)?;
+                Ok(Value::PairList(values))
+            }
+            Value::Null => {
+                let original_keys = HashSet::new();
+                let mut values = Vec::new();
+                self.append_pairlist_defaults(&mut values, &original_keys, rhs)?;
+                Ok(Value::PairList(values))
+            }
+            other => Err(ZuzuRustError::runtime(format!(
+                "default operator left operand expects Dict, PairList, or Null, got {}",
+                other.type_name()
+            ))),
+        }
+    }
+
+    fn append_pairlist_defaults(
+        &self,
+        values: &mut Vec<(String, Value)>,
+        original_keys: &HashSet<String>,
+        defaults: Value,
+    ) -> Result<()> {
+        let defaults_type = defaults.type_name();
+        match defaults {
+            Value::Dict(defaults) | Value::SystemDict(defaults) => {
+                let mut keys: Vec<_> = defaults.keys().cloned().collect();
+                keys.sort();
+                for key in keys {
+                    if !original_keys.contains(&key) {
+                        values.push((
+                            key.clone(),
+                            defaults.get(&key).cloned().unwrap_or(Value::Null),
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            Value::PairList(defaults) => {
+                values.extend(
+                    defaults
+                        .into_iter()
+                        .filter(|(key, _)| !original_keys.contains(key)),
+                );
+                Ok(())
+            }
+            _ => Err(ZuzuRustError::runtime(format!(
+                "default operator right operand expects Dict or PairList, got {defaults_type}"
             ))),
         }
     }

@@ -2198,6 +2198,7 @@ fn operator_kind(operator: &str) -> &str {
         "≶" | "<=>" | "≷" => "numeric_compare",
         "≡" | "==" => "strict_equal",
         "≢" | "!=" => "strict_not_equal",
+        "default" => "default",
         "⋀" | "and" => "logical_and",
         "⋁" | "or" => "logical_or",
         "⊻" | "xor" => "logical_xor",

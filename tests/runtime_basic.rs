@@ -413,6 +413,166 @@ fn runs_collection_operator_ztest_script() {
 }
 
 #[test]
+fn default_operator_merges_dict_and_pairlist_defaults() {
+    let repo_root = repo_root();
+    let runtime = Runtime::new(vec![repo_root.join("stdlib/modules")]);
+    let output = runtime
+        .run_script_source(
+            r#"
+            from test/more import *;
+
+            let dict := { keep: "left", child: [ "left" ] };
+            let dict_got := dict default { keep: "right", add: "fallback" };
+            is( typeof dict_got, "Dict", "Dict default returns a Dict" );
+            is( dict_got{"keep"}, "left", "Dict default keeps left value" );
+            is( dict_got{"add"}, "fallback", "Dict default inserts missing key" );
+            dict_got{"child"}.push("mutated");
+            is( dict{"child"}, [ "left", "mutated" ], "Dict default shares values" );
+
+            let dict_pairs := { keep: "left" } default {{
+                keep: "right",
+                add: "first",
+                add: "second",
+            }};
+            is(
+                dict_pairs.kv(),
+                [ "add", "first", "keep", "left" ],
+                "Dict default from PairList uses first missing default",
+            );
+
+            let pairs := {{ keep: "left-one", keep: "left-two", child: [ "left" ] }};
+            let pairs_got := pairs default {{
+                keep: "right",
+                add: "first",
+                add: "second",
+            }};
+            is( typeof pairs_got, "PairList", "PairList default returns a PairList" );
+            is(
+                pairs_got.kv(),
+                [
+                    "keep", "left-one",
+                    "keep", "left-two",
+                    "child", [ "left" ],
+                    "add", "first",
+                    "add", "second",
+                ],
+                "PairList default preserves left order and appends absent duplicates",
+            );
+            pairs_got{"child"}.push("mutated");
+            is( pairs{"child"}, [ "left", "mutated" ], "PairList default shares values" );
+
+            let null_got := null default {{ dup: 1, dup: 2 }};
+            is( typeof null_got, "PairList", "null default returns a PairList" );
+            is(
+                null_got.kv(),
+                [ "dup", 1, "dup", 2 ],
+                "null default appends all PairList defaults",
+            );
+
+            let sorted_from_dict := {{ m: 13 }} default { z: 26, a: 1 };
+            is(
+                sorted_from_dict.kv(),
+                [ "m", 13, "a", 1, "z", 26 ],
+                "PairList default appends Dict defaults in sorted key order",
+            );
+
+            let sys := __system__ default { runtime: "bad", phase: 11 };
+            sys.set("extra", 1);
+            is( sys{"runtime"}, "zuzu-rust", "SystemDict default keeps system keys" );
+            is( sys{"phase"}, 11, "SystemDict default inserts missing defaults" );
+            is( sys{"extra"}, 1, "SystemDict default result is mutable" );
+
+            function named ( ... PairList opts ) {
+                return opts;
+            }
+
+            let opts := {{ explicit: "left" }};
+            let spread_got := named( ...opts default {
+                explicit: "right",
+                fallback: "value",
+            } );
+            is( spread_got{"explicit"}, "left", "spread default keeps left key" );
+            is( spread_got{"fallback"}, "value", "spread default includes fallback key" );
+
+            done_testing();
+            "#,
+        )
+        .expect("default operator source should execute successfully");
+
+    assert!(output.stdout.ends_with("1..16\n"));
+    assert!(
+        !output.stdout.contains("not ok"),
+        "default-operator source emitted a failing assertion:\n{}",
+        output.stdout
+    );
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
+fn default_operator_spread_expands_dicts_in_sorted_key_order() {
+    let runtime = Runtime::new(Vec::new());
+    let output = runtime
+        .run_script_source(
+            r#"
+            function named ( ... PairList opts ) {
+                return opts.keys();
+            }
+
+            let default_keys := named( ...({} default { b: 2, a: 1, c: 3 }) );
+            say(default_keys[0]);
+            say(default_keys[1]);
+            say(default_keys[2]);
+
+            let system_keys := named( ...__system__ );
+            say(system_keys[0]);
+            say(system_keys[1]);
+            say(system_keys[2]);
+            "#,
+        )
+        .expect("Dict and SystemDict spread order source should execute successfully");
+
+    assert_eq!(output.stdout, "a\nb\nc\ndeny_clib\ndeny_db\ndeny_fs\n");
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
+fn default_operator_rejects_invalid_operands() {
+    let runtime = Runtime::new(Vec::new());
+    let left_err = match runtime.run_script_source("1 default {};") {
+        Ok(_) => panic!("invalid default left operand should fail"),
+        Err(err) => err,
+    };
+    assert!(
+        left_err
+            .to_string()
+            .contains("default operator left operand expects Dict, PairList, or Null, got Number"),
+        "unexpected error: {left_err}"
+    );
+
+    let right_err = match runtime.run_script_source("let got := {} default 1;") {
+        Ok(_) => panic!("invalid default right operand should fail"),
+        Err(err) => err,
+    };
+    assert!(
+        right_err
+            .to_string()
+            .contains("default operator right operand expects Dict or PairList, got Number"),
+        "unexpected error: {right_err}"
+    );
+
+    let right_null_err = match runtime.run_script_source("let got := {} default null;") {
+        Ok(_) => panic!("null default right operand should fail"),
+        Err(err) => err,
+    };
+    assert!(
+        right_null_err
+            .to_string()
+            .contains("default operator right operand expects Dict or PairList, got Null"),
+        "unexpected error: {right_null_err}"
+    );
+}
+
+#[test]
 fn system_inc_exposes_module_roots_as_array() {
     let cwd = std::env::current_dir().unwrap();
     let root_a = cwd.join("alpha/modules");

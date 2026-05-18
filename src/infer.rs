@@ -368,6 +368,11 @@ fn this_infer_expression(inferencer: &mut Inferencer, expression: &mut Expressio
                 "+" | "-" | "*" | "/" | "×" | "÷" | "mod" | "**" | "<=>" | "≶" | "≷" | "cmp"
                 | "cmpi" => Some("Number".to_owned()),
                 "union" | "⋃" | "intersection" | "⋂" | "\\" | "∖" => same_type(left, right),
+                "default" => match left.inferred_type() {
+                    Some("Null") => Some("PairList".to_owned()),
+                    Some("Dict") | Some("PairList") => left.inferred_type().map(ToOwned::to_owned),
+                    _ => None,
+                },
                 "~=" | "->" => Some("String".to_owned()),
                 "@" | "@@" => None,
                 _ => None,

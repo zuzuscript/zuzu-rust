@@ -876,7 +876,7 @@ fn infix_precedence(operator: &str) -> u8 {
         "or" | "⋁" => PREC_OR,
         "xor" | "⊻" => PREC_XOR,
         "and" | "⋀" | "nand" | "⊼" => PREC_AND,
-        "==" | "≡" | "!=" | "≢" => PREC_EQUALITY,
+        "==" | "≡" | "!=" | "≢" | "default" => PREC_EQUALITY,
         "=" | "≠" | "<" | ">" | "<=" | "≤" | ">=" | "≥" | "<=>" | "≶" | "≷" | "eq" | "ne"
         | "gt" | "ge" | "lt" | "le" | "cmp" | "eqi" | "nei" | "gti" | "gei" | "lti" | "lei"
         | "cmpi" | "in" | "∈" | "∉" | "subsetof" | "⊂" | "supersetof" | "⊃" | "equivalentof"

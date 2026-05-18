@@ -1766,7 +1766,7 @@ impl Parser {
             "or" | "⋁" => Some((PREC_OR, false)),
             "xor" | "⊻" => Some((PREC_XOR, false)),
             "and" | "⋀" | "nand" | "⊼" => Some((PREC_AND, false)),
-            "==" | "≡" | "!=" | "≢" => Some((PREC_EQUALITY, false)),
+            "==" | "≡" | "!=" | "≢" | "default" => Some((PREC_EQUALITY, false)),
             "=" | "≠" | "<" | ">" | "<=" | "≤" | ">=" | "≥" | "<=>" | "≶" | "≷" | "eq" | "ne"
             | "gt" | "ge" | "lt" | "le" | "cmp" | "eqi" | "nei" | "gti" | "gei" | "lti" | "lei"
             | "cmpi" | "in" | "∈" | "∉" | "subsetof" | "⊂" | "supersetof" | "⊃"

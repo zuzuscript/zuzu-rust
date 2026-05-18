@@ -1,4 +1,7 @@
-use zuzu_rust::{parse_program, parse_program_with_options, ZuzuRustError};
+use zuzu_rust::ast::CallArgument;
+use zuzu_rust::{
+    parse_expression, parse_program, parse_program_with_options, Expression, ZuzuRustError,
+};
 
 fn parse_syntax_only(source: &str) -> Result<zuzu_rust::Program, ZuzuRustError> {
     parse_program_with_options(source, false, true)
@@ -241,6 +244,61 @@ fn dumps_spread_call_arguments_as_structured_nodes() {
     assert!(json.contains("\"name\": \"items\""));
     assert!(json.contains("\"type\": \"PairListLiteral\""));
     assert!(json.contains("\"name\": \"extra\""));
+}
+
+#[test]
+fn parses_default_as_equality_tier_binary_operator() {
+    let expr = parse_expression("left default middle == right")
+        .expect("default operator expression should parse");
+    let Expression::Binary {
+        operator,
+        left,
+        right,
+        ..
+    } = expr
+    else {
+        panic!("expected top-level equality BinaryExpression");
+    };
+    assert_eq!(operator, "==");
+    assert!(matches!(
+        left.as_ref(),
+        Expression::Binary { operator, .. } if operator == "default"
+    ));
+    assert!(matches!(
+        right.as_ref(),
+        Expression::Identifier { name, .. } if name == "right"
+    ));
+
+    let expr = parse_expression("left default middle < right")
+        .expect("default/comparison precedence expression should parse");
+    let Expression::Binary {
+        operator, right, ..
+    } = expr
+    else {
+        panic!("expected top-level default BinaryExpression");
+    };
+    assert_eq!(operator, "default");
+    assert!(matches!(
+        right.as_ref(),
+        Expression::Binary { operator, .. } if operator == "<"
+    ));
+}
+
+#[test]
+fn parses_spread_default_as_single_spread_expression() {
+    let expr = parse_expression("target( ...opts default { fallback: 1 } )")
+        .expect("spread default call should parse");
+    let Expression::Call { arguments, .. } = expr else {
+        panic!("expected call expression");
+    };
+    assert_eq!(arguments.len(), 1);
+    let CallArgument::Spread { value, .. } = &arguments[0] else {
+        panic!("expected spread argument");
+    };
+    assert!(matches!(
+        value,
+        Expression::Binary { operator, .. } if operator == "default"
+    ));
 }
 
 #[test]
