@@ -10,6 +10,7 @@ use crate::ast::{
 };
 use crate::error::{Result, ZuzuRustError};
 use crate::token::{TemplatePart as TokenTemplatePart, Token, TokenKind};
+use std::collections::HashSet;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -246,6 +247,15 @@ impl Parser {
             }
         }
         self.expect_punct('}', "Expected '}' after declaration binding pattern")?;
+        let mut names = HashSet::new();
+        for entry in &entries {
+            if !names.insert(entry.name.clone()) {
+                return Err(ZuzuRustError::semantic(
+                    format!("Duplicate unpacked binding '{}' in declaration", entry.name),
+                    entry.line,
+                ));
+            }
+        }
         Ok(DeclarationBindingPattern::Keyed {
             line,
             source_file: self.source_file(),

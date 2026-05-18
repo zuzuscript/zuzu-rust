@@ -657,6 +657,21 @@ fn declaration_unpacking_rejects_invalid_sources_and_bindings() {
         .to_string()
         .contains("Duplicate unpacked binding 'a'"));
 
+    let repo_root = repo_root();
+    let runtime = Runtime::new(vec![repo_root.join("stdlib/modules")]);
+    let eval_duplicate = match runtime.run_script_source(
+        r#"
+        from std/eval import eval;
+        eval("let { a, b: a } := { a: 1, b: 2 };");
+        "#,
+    ) {
+        Ok(_) => panic!("std/eval should reject duplicate unpacked local names"),
+        Err(err) => err,
+    };
+    assert!(eval_duplicate
+        .to_string()
+        .contains("Duplicate unpacked binding 'a'"));
+
     let default_scope = parse_program("let { a := 1, b := a } := {};")
         .expect_err("unpack defaults should not resolve newly declared names");
     assert!(default_scope
