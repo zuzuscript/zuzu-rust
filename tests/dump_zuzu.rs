@@ -59,6 +59,26 @@ fn dump_zuzu_honours_no_sema_and_remains_parseable() {
 }
 
 #[test]
+fn dump_zuzu_renders_declaration_unpacking_patterns() {
+    let output = run_zuzu(
+        &[
+            "--dump-zuzu",
+            "--no-sema",
+            "-e",
+            r#"let {host,"for":for_id,Number port:=1234,`user-${suffix}`:String user_id,(key): value but weak}:=opts;"#,
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "let { host, \"for\": for_id, Number port := 1234, (`user-${ suffix }`): String user_id, (key): value but weak } := opts;\n"
+    );
+}
+
+#[test]
 fn dump_modes_are_mutually_exclusive() {
     let output = run_zuzu(&["--dump-ast", "--dump-zuzu", "-e", "say 1;"], &repo_root());
 

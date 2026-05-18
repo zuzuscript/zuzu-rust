@@ -1,11 +1,12 @@
 use crate::ast::{
     BlockStatement, CallArgument, CatchBinding, CatchClause, ClassDeclaration, ClassMember,
-    DictEntry, DictKey, DieStatement, Expression, ExpressionStatement, FieldDeclaration,
-    ForStatement, FunctionDeclaration, IfStatement, ImportDeclaration, ImportSpecifier,
-    KeywordStatement, LoopControlStatement, MethodDeclaration, Parameter, PostfixCondition,
-    PostfixConditionalStatement, Program, ReturnStatement, Statement, SwitchCase, SwitchStatement,
-    TemplatePart as AstTemplatePart, ThrowStatement, TraitDeclaration, TryStatement,
-    VariableDeclaration, WhileStatement,
+    DeclarationBindingEntry, DeclarationBindingPattern, DictEntry, DictKey, DieStatement,
+    Expression, ExpressionStatement, FieldDeclaration, ForStatement, FunctionDeclaration,
+    IfStatement, ImportDeclaration, ImportSpecifier, KeywordStatement, LoopControlStatement,
+    MethodDeclaration, Parameter, PostfixCondition, PostfixConditionalStatement, Program,
+    ReturnStatement, Statement, SwitchCase, SwitchStatement, TemplatePart as AstTemplatePart,
+    ThrowStatement, TraitDeclaration, TryStatement, VariableDeclaration, VariableUnpackDeclaration,
+    WhileStatement,
 };
 use crate::error::{Result, ZuzuRustError};
 use crate::token::{TemplatePart as TokenTemplatePart, Token, TokenKind};
@@ -87,7 +88,7 @@ impl Parser {
                 Statement::ImportDeclaration(self.parse_import_declaration()?)
             }
             TokenKind::Keyword("let") | TokenKind::Keyword("const") => {
-                Statement::VariableDeclaration(self.parse_variable_declaration()?)
+                self.parse_variable_declaration_statement()?
             }
             TokenKind::Keyword("function") | TokenKind::Keyword("async") => {
                 Statement::FunctionDeclaration(self.parse_function_declaration()?)
@@ -170,9 +171,25 @@ impl Parser {
         }
     }
 
-    fn parse_variable_declaration(&mut self) -> Result<VariableDeclaration> {
+    fn parse_variable_declaration_statement(&mut self) -> Result<Statement> {
         let line = self.current_line();
         let kind = self.expect_keyword_any(&["let", "const"])?;
+        if self.check_punct('{') {
+            Ok(Statement::VariableUnpackDeclaration(
+                self.parse_variable_unpack_declaration_after_kind(line, kind)?,
+            ))
+        } else {
+            Ok(Statement::VariableDeclaration(
+                self.parse_variable_declaration_after_kind(line, kind)?,
+            ))
+        }
+    }
+
+    fn parse_variable_declaration_after_kind(
+        &mut self,
+        line: usize,
+        kind: String,
+    ) -> Result<VariableDeclaration> {
         let (declared_type, name) = self.parse_typed_name()?;
         let mut is_weak_storage = self.parse_optional_weak_modifier("declaration")?;
         let init = if self.match_operator(":=") {
@@ -192,6 +209,151 @@ impl Parser {
             is_weak_storage,
             runtime_typecheck_required: None,
         })
+    }
+
+    fn parse_variable_unpack_declaration_after_kind(
+        &mut self,
+        line: usize,
+        kind: String,
+    ) -> Result<VariableUnpackDeclaration> {
+        let pattern = self.parse_declaration_binding_pattern()?;
+        self.expect_operator(":=", "Expected ':=' after declaration binding pattern")?;
+        let init = self.parse_expression()?;
+        Ok(VariableUnpackDeclaration {
+            line,
+            source_file: self.source_file(),
+            kind,
+            pattern,
+            init,
+        })
+    }
+
+    fn parse_declaration_binding_pattern(&mut self) -> Result<DeclarationBindingPattern> {
+        let line = self.current_line();
+        self.expect_punct('{', "Expected '{' in declaration binding pattern")?;
+        let mut entries = Vec::new();
+        self.consume_commas();
+        if !self.check_punct('}') {
+            loop {
+                entries.push(self.parse_declaration_binding_entry()?);
+                self.consume_commas();
+                if self.check_punct('}') {
+                    break;
+                }
+                if !self.previous_was_comma() {
+                    break;
+                }
+            }
+        }
+        self.expect_punct('}', "Expected '}' after declaration binding pattern")?;
+        Ok(DeclarationBindingPattern::Keyed {
+            line,
+            source_file: self.source_file(),
+            entries,
+        })
+    }
+
+    fn parse_declaration_binding_entry(&mut self) -> Result<DeclarationBindingEntry> {
+        let line = self.current_line();
+        let source_file = self.source_file();
+        let (key, declared_type, name) = self.parse_declaration_binding_key_and_name()?;
+        let default_value = if self.match_operator(":=") {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+        let is_weak_storage = self.parse_optional_weak_modifier("declaration")?;
+        Ok(DeclarationBindingEntry {
+            line,
+            source_file,
+            key,
+            declared_type,
+            name,
+            default_value,
+            is_weak_storage,
+            runtime_typecheck_required: None,
+        })
+    }
+
+    fn parse_declaration_binding_key_and_name(
+        &mut self,
+    ) -> Result<(DictKey, Option<String>, String)> {
+        match self.current_kind() {
+            TokenKind::Identifier(first) => {
+                let first = first.clone();
+                let key_line = self.current_line();
+                let key_source = self.source_file();
+                self.advance();
+                if self.match_operator(":") {
+                    let (declared_type, name) = self.parse_typed_name()?;
+                    Ok((
+                        DictKey::Identifier {
+                            line: key_line,
+                            source_file: key_source,
+                            name: first,
+                        },
+                        declared_type,
+                        name,
+                    ))
+                } else if self.check_identifier() {
+                    let name = self.expect_name("Expected identifier")?;
+                    Ok((
+                        DictKey::Identifier {
+                            line: self.previous_line(),
+                            source_file: self.source_file(),
+                            name: name.clone(),
+                        },
+                        Some(first),
+                        name,
+                    ))
+                } else {
+                    Ok((
+                        DictKey::Identifier {
+                            line: key_line,
+                            source_file: key_source,
+                            name: first.clone(),
+                        },
+                        None,
+                        first,
+                    ))
+                }
+            }
+            TokenKind::Keyword(_) => {
+                let key = self.parse_dict_key_before_colon()?;
+                self.expect_operator(":", "Expected ':' after declaration binding key")?;
+                let (declared_type, name) = self.parse_typed_name()?;
+                Ok((key, declared_type, name))
+            }
+            TokenKind::String(_) => {
+                let key = self.parse_dict_key_before_colon()?;
+                self.expect_operator(":", "Expected ':' after declaration binding key")?;
+                let (declared_type, name) = self.parse_typed_name()?;
+                Ok((key, declared_type, name))
+            }
+            TokenKind::Template(_) => {
+                let expression = self.parse_primary_expression()?;
+                let line = expression.line();
+                let source_file = expression.source_file().map(str::to_owned);
+                self.expect_operator(":", "Expected ':' after declaration binding key")?;
+                let (declared_type, name) = self.parse_typed_name()?;
+                Ok((
+                    DictKey::Expression {
+                        line,
+                        source_file,
+                        expression: Box::new(expression),
+                    },
+                    declared_type,
+                    name,
+                ))
+            }
+            TokenKind::Punct('(') => {
+                let key = self.parse_dict_key_before_colon()?;
+                self.expect_operator(":", "Expected ':' after declaration binding key")?;
+                let (declared_type, name) = self.parse_typed_name()?;
+                Ok((key, declared_type, name))
+            }
+            _ => Err(self.error_current("Expected unpacked binding in declaration")),
+        }
     }
 
     fn parse_function_declaration(&mut self) -> Result<FunctionDeclaration> {

@@ -536,6 +536,157 @@ fn default_operator_spread_expands_dicts_in_sorted_key_order() {
 }
 
 #[test]
+fn declaration_unpacking_supports_dicts_pairlists_defaults_and_weak_bindings() {
+    let repo_root = repo_root();
+    let runtime = Runtime::new(vec![repo_root.join("stdlib/modules")]);
+    let output = runtime
+        .run_script_source(
+            r#"
+            from test/more import *;
+
+            let suffix := "id";
+            let content_key := "content-type";
+            let calls := 0;
+            function fallback () {
+                calls := calls + 1;
+                return "fallback";
+            }
+            function explode () {
+                die "default should not run";
+            }
+
+            let {
+                host,
+                Number port,
+                "for": for_id,
+                `user-${suffix}`: String user_id,
+                (content_key): content_type,
+                present := explode(),
+                missing := fallback(),
+                absent,
+            } := {
+                host: "127.0.0.1",
+                port: 9000,
+                "for": 7,
+                "user-id": "ada",
+                "content-type": "text/plain",
+                present: null,
+            };
+
+            is( host, "127.0.0.1", "shorthand binding" );
+            is( port, 9000, "typed shorthand binding" );
+            is( for_id, 7, "string key alias binding" );
+            is( user_id, "ada", "template key typed alias binding" );
+            is( content_type, "text/plain", "computed key alias binding" );
+            is( present, null, "present null does not use default" );
+            is( missing, "fallback", "missing key uses default" );
+            is( calls, 1, "defaults are lazy" );
+            is( absent, null, "missing key without default binds null" );
+
+            let source_calls := 0;
+            function source () {
+                source_calls := source_calls + 1;
+                return { a: 1, b: 2 };
+            }
+            let { a, b } := source();
+            is( a + b + source_calls, 4, "source evaluates once" );
+
+            let key := "chosen";
+            {
+                let { (key): key } := { chosen: 5 };
+                is( key, 5, "key expressions use outer names before locals exist" );
+            }
+
+            let { dup } := {{ dup: 1, dup: 2 }};
+            is( dup, 1, "PairList unpacking uses first-match semantics" );
+
+            class Box {}
+            let owner := new Box();
+            let { owner: parent but weak } := { owner: owner };
+            let alive := parent != null;
+            owner := null;
+            ok( alive and parent == null, "per-entry weak storage is honoured" );
+
+            const { fixed } := { fixed: 42 };
+            is( fixed, 42, "const unpacking binds values" );
+            done_testing();
+            "#,
+        )
+        .expect("declaration unpacking source should execute successfully");
+
+    assert!(
+        !output.stdout.contains("not ok"),
+        "declaration unpacking source emitted a failing assertion:\n{}",
+        output.stdout
+    );
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
+fn declaration_unpacking_rejects_invalid_sources_and_bindings() {
+    let runtime = Runtime::new(Vec::new());
+
+    let non_collection = match runtime.run_script_source("let { a } := 42;") {
+        Ok(_) => panic!("non-Dict and non-PairList sources should fail"),
+        Err(err) => err,
+    };
+    assert!(non_collection
+        .to_string()
+        .contains("Declaration unpacking expects Dict or PairList, got Number"));
+
+    let type_error = match runtime.run_script_source(r#"let { Number n } := { n: "nope" };"#) {
+        Ok(_) => panic!("typed unpacked binding should keep type checks"),
+        Err(err) => err,
+    };
+    assert!(type_error
+        .to_string()
+        .contains("TypeException: 'n' must be Number, got String"));
+
+    let present_type_error =
+        match runtime.run_script_source(r#"let { Number n := 1 } := { n: "nope" };"#) {
+            Ok(_) => panic!("present values should still be type checked when defaults match"),
+            Err(err) => err,
+        };
+    assert!(present_type_error
+        .to_string()
+        .contains("TypeException: 'n' must be Number, got String"));
+
+    let duplicate = parse_program("let { a, b: a } := { a: 1, b: 2 };")
+        .expect_err("duplicate unpacked local names should fail semantically");
+    assert!(duplicate
+        .to_string()
+        .contains("Duplicate unpacked binding 'a'"));
+
+    let default_scope = parse_program("let { a := 1, b := a } := {};")
+        .expect_err("unpack defaults should not resolve newly declared names");
+    assert!(default_scope
+        .to_string()
+        .contains("Use of undeclared identifier 'a'"));
+
+    let const_reassign = parse_program("const { a } := { a: 1 }; a := 2;")
+        .expect_err("const unpacked bindings should reject reassignment");
+    assert!(const_reassign
+        .to_string()
+        .contains("cannot modify const binding 'a'"));
+
+    let destructuring_assignment = parse_program(
+        r#"
+        let source := { a: 1 };
+        let x;
+        ({ a: x }) := source;
+        "#,
+    )
+    .expect_err("assignment destructuring should remain invalid");
+    assert!(destructuring_assignment
+        .to_string()
+        .contains("invalid assignment target"));
+
+    let let_expression_pattern = parse_program("let result := (let { a } := { a: 1 });")
+        .expect_err("keyed patterns should remain invalid in let expressions");
+    assert!(let_expression_pattern.to_string().contains("Expected name"));
+}
+
+#[test]
 fn default_operator_rejects_invalid_operands() {
     let runtime = Runtime::new(Vec::new());
     let left_err = match runtime.run_script_source("1 default {};") {

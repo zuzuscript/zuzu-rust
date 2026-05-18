@@ -73,6 +73,27 @@ fn dumps_exact_ast_shape_for_simple_typed_declaration() {
 }
 
 #[test]
+fn dumps_ast_shape_for_declaration_unpacking_pattern() {
+    let program = parse_syntax_only(
+        r#"let { host, "for": for_id, Number port := 1234, (`user-${suffix}`): String user_id but weak } := opts;"#,
+    )
+    .expect("declaration unpacking should parse");
+    let json = program.to_json_pretty();
+
+    assert!(json.contains("\"type\": \"VariableUnpackDeclaration\""));
+    assert!(json.contains("\"type\": \"KeyedBindingPattern\""));
+    assert!(json.contains("\"type\": \"BindingEntry\""));
+    assert!(json.contains("\"type\": \"IdentifierKey\""));
+    assert!(json.contains("\"type\": \"StringKey\""));
+    assert!(json.contains("\"type\": \"ExpressionKey\""));
+    assert!(json.contains("\"name\": \"for_id\""));
+    assert!(json.contains("\"declared_type\": \"Number\""));
+    assert!(json.contains("\"default_value\""));
+    assert!(json.contains("\"is_weak_storage\": true"));
+    assert!(json.contains("\"name\": \"opts\""));
+}
+
+#[test]
 fn dumps_weak_parser_metadata() {
     let source = r#"
         let owner := null;

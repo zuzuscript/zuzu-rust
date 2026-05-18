@@ -9,6 +9,7 @@ pub struct Program {
 pub enum Statement {
     Block(BlockStatement),
     VariableDeclaration(VariableDeclaration),
+    VariableUnpackDeclaration(VariableUnpackDeclaration),
     FunctionDeclaration(FunctionDeclaration),
     ClassDeclaration(ClassDeclaration),
     TraitDeclaration(TraitDeclaration),
@@ -43,6 +44,36 @@ pub struct VariableDeclaration {
     pub declared_type: Option<String>,
     pub name: String,
     pub init: Option<Expression>,
+    pub is_weak_storage: bool,
+    pub runtime_typecheck_required: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariableUnpackDeclaration {
+    pub line: usize,
+    pub source_file: Option<String>,
+    pub kind: String,
+    pub pattern: DeclarationBindingPattern,
+    pub init: Expression,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclarationBindingPattern {
+    Keyed {
+        line: usize,
+        source_file: Option<String>,
+        entries: Vec<DeclarationBindingEntry>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclarationBindingEntry {
+    pub line: usize,
+    pub source_file: Option<String>,
+    pub key: DictKey,
+    pub declared_type: Option<String>,
+    pub name: String,
+    pub default_value: Option<Expression>,
     pub is_weak_storage: bool,
     pub runtime_typecheck_required: Option<bool>,
 }
@@ -601,6 +632,7 @@ impl Statement {
         match self {
             Statement::Block(node) => node.line,
             Statement::VariableDeclaration(node) => node.line,
+            Statement::VariableUnpackDeclaration(node) => node.line,
             Statement::FunctionDeclaration(node) => node.line,
             Statement::ClassDeclaration(node) => node.line,
             Statement::TraitDeclaration(node) => node.line,
@@ -624,6 +656,7 @@ impl Statement {
         match self {
             Statement::Block(node) => node.source_file.as_deref(),
             Statement::VariableDeclaration(node) => node.source_file.as_deref(),
+            Statement::VariableUnpackDeclaration(node) => node.source_file.as_deref(),
             Statement::FunctionDeclaration(node) => node.source_file.as_deref(),
             Statement::ClassDeclaration(node) => node.source_file.as_deref(),
             Statement::TraitDeclaration(node) => node.source_file.as_deref(),
@@ -647,6 +680,7 @@ impl Statement {
         match self {
             Statement::Block(node) => node.write_json(out, indent),
             Statement::VariableDeclaration(node) => node.write_json(out, indent),
+            Statement::VariableUnpackDeclaration(node) => node.write_json(out, indent),
             Statement::FunctionDeclaration(node) => node.write_json(out, indent),
             Statement::ClassDeclaration(node) => node.write_json(out, indent),
             Statement::TraitDeclaration(node) => node.write_json(out, indent),
@@ -717,6 +751,93 @@ impl VariableDeclaration {
             true,
         );
         write_optional_expr_field(out, indent + 1, "init", self.init.as_ref(), false);
+        write_object_end(out, indent);
+    }
+}
+
+impl VariableUnpackDeclaration {
+    fn write_json(&self, out: &mut String, indent: usize) {
+        write_object_start(out);
+        write_string_field(out, indent + 1, "type", "VariableUnpackDeclaration", true);
+        write_number_field(out, indent + 1, "line", self.line, true);
+        write_string_field(out, indent + 1, "kind", &self.kind, true);
+        write_field_name(out, indent + 1, "pattern");
+        self.pattern.write_json(out, indent + 1);
+        out.push_str(",\n");
+        write_field_name(out, indent + 1, "init");
+        self.init.write_json(out, indent + 1);
+        out.push('\n');
+        write_object_end(out, indent);
+    }
+}
+
+impl DeclarationBindingPattern {
+    pub fn entries(&self) -> &[DeclarationBindingEntry] {
+        match self {
+            DeclarationBindingPattern::Keyed { entries, .. } => entries,
+        }
+    }
+
+    pub fn entries_mut(&mut self) -> &mut [DeclarationBindingEntry] {
+        match self {
+            DeclarationBindingPattern::Keyed { entries, .. } => entries,
+        }
+    }
+
+    fn write_json(&self, out: &mut String, indent: usize) {
+        match self {
+            DeclarationBindingPattern::Keyed { line, entries, .. } => {
+                write_object_start(out);
+                write_string_field(out, indent + 1, "type", "KeyedBindingPattern", true);
+                write_number_field(out, indent + 1, "line", *line, true);
+                write_field_name(out, indent + 1, "entries");
+                write_array(out, indent + 1, entries, |out, indent, entry| {
+                    entry.write_json(out, indent)
+                });
+                out.push('\n');
+                write_object_end(out, indent);
+            }
+        }
+    }
+}
+
+impl DeclarationBindingEntry {
+    fn write_json(&self, out: &mut String, indent: usize) {
+        write_object_start(out);
+        write_string_field(out, indent + 1, "type", "BindingEntry", true);
+        write_number_field(out, indent + 1, "line", self.line, true);
+        write_field_name(out, indent + 1, "key");
+        self.key.write_json(out, indent + 1);
+        out.push_str(",\n");
+        write_optional_string_field(
+            out,
+            indent + 1,
+            "declared_type",
+            self.declared_type.as_deref(),
+            true,
+        );
+        write_string_field(out, indent + 1, "name", &self.name, true);
+        write_bool_field(
+            out,
+            indent + 1,
+            "is_weak_storage",
+            self.is_weak_storage,
+            true,
+        );
+        write_optional_bool_field(
+            out,
+            indent + 1,
+            "runtime_typecheck_required",
+            self.runtime_typecheck_required,
+            true,
+        );
+        write_optional_expr_field(
+            out,
+            indent + 1,
+            "default_value",
+            self.default_value.as_ref(),
+            false,
+        );
         write_object_end(out, indent);
     }
 }

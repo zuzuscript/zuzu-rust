@@ -1,7 +1,8 @@
 use crate::ast::{
     BlockStatement, CallArgument, CatchBinding, CatchClause, ClassDeclaration, ClassMember,
-    DictEntry, DictKey, Expression, FieldDeclaration, FunctionDeclaration, ImportDeclaration,
-    MethodDeclaration, Parameter, Program, Statement, SwitchCase, TemplatePart, TraitDeclaration,
+    DeclarationBindingEntry, DictEntry, DictKey, Expression, FieldDeclaration, FunctionDeclaration,
+    ImportDeclaration, MethodDeclaration, Parameter, Program, Statement, SwitchCase, TemplatePart,
+    TraitDeclaration,
 };
 
 const PREC_ASSIGNMENT: u8 = 1;
@@ -93,6 +94,15 @@ fn render_statement(statement: &Statement, indent: usize, out: &mut String) {
                 node.init.as_ref(),
                 node.is_weak_storage,
             ));
+            out.push(';');
+        }
+        Statement::VariableUnpackDeclaration(node) => {
+            push_indent(out, indent);
+            out.push_str(&node.kind);
+            out.push(' ');
+            out.push_str(&render_binding_pattern(node.pattern.entries()));
+            out.push_str(" := ");
+            out.push_str(&render_expression(&node.init));
             out.push(';');
         }
         Statement::FunctionDeclaration(node) => render_function_declaration_into(node, indent, out),
@@ -386,6 +396,46 @@ fn render_variable_head(
         out.push_str(&render_expression(init));
     }
     if is_weak_storage {
+        out.push_str(" but weak");
+    }
+    out
+}
+
+fn render_binding_pattern(entries: &[DeclarationBindingEntry]) -> String {
+    format!(
+        "{{ {} }}",
+        entries
+            .iter()
+            .map(render_binding_entry)
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+fn render_binding_entry(entry: &DeclarationBindingEntry) -> String {
+    let key = render_dict_literal_key(&entry.key);
+    let shorthand = matches!(&entry.key, DictKey::Identifier { name, .. } if name == &entry.name);
+    let mut out = String::new();
+    if shorthand {
+        if let Some(declared_type) = &entry.declared_type {
+            out.push_str(declared_type);
+            out.push(' ');
+        }
+        out.push_str(&entry.name);
+    } else {
+        out.push_str(&key);
+        out.push_str(": ");
+        if let Some(declared_type) = &entry.declared_type {
+            out.push_str(declared_type);
+            out.push(' ');
+        }
+        out.push_str(&entry.name);
+    }
+    if let Some(default_value) = &entry.default_value {
+        out.push_str(" := ");
+        out.push_str(&render_expression(default_value));
+    }
+    if entry.is_weak_storage {
         out.push_str(" but weak");
     }
     out

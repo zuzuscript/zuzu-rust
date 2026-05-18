@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    BlockStatement, CallArgument, CatchClause, ClassDeclaration, ClassMember, DictEntry, DictKey,
-    Expression, FunctionDeclaration, MethodDeclaration, Program, Statement, TemplatePart,
+    BlockStatement, CallArgument, CatchClause, ClassDeclaration, ClassMember,
+    DeclarationBindingEntry, DictEntry, DictKey, Expression, FunctionDeclaration,
+    MethodDeclaration, Program, Statement, TemplatePart,
 };
 
 pub fn annotate_program(program: &mut Program) {
@@ -88,6 +89,15 @@ impl Inferencer {
                         .and_then(|expr| expr.inferred_type().map(ToOwned::to_owned))
                 }) {
                     self.bind(node.name.clone(), var_type);
+                }
+            }
+            Statement::VariableUnpackDeclaration(node) => {
+                this_infer_expression(self, &mut node.init);
+                for entry in node.pattern.entries_mut() {
+                    self.infer_unpack_entry(entry);
+                    if let Some(var_type) = entry.declared_type.clone() {
+                        self.bind(entry.name.clone(), var_type);
+                    }
                 }
             }
             Statement::FunctionDeclaration(node) => {
@@ -253,6 +263,14 @@ impl Inferencer {
                 }
             }
         });
+    }
+
+    fn infer_unpack_entry(&mut self, entry: &mut DeclarationBindingEntry) {
+        infer_dict_key(self, &mut entry.key);
+        if let Some(default_value) = &mut entry.default_value {
+            this_infer_expression(self, default_value);
+        }
+        entry.runtime_typecheck_required = entry.declared_type.as_ref().map(|_| true);
     }
 
     fn infer_catch(&mut self, clause: &mut CatchClause) {

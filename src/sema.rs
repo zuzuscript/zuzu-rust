@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{
-    CallArgument, CatchClause, ClassDeclaration, ClassMember, DictEntry, DictKey, Expression,
-    FunctionDeclaration, ImportDeclaration, MethodDeclaration, Program, Statement, TemplatePart,
-    TraitDeclaration,
+    CallArgument, CatchClause, ClassDeclaration, ClassMember, DeclarationBindingEntry, DictEntry,
+    DictKey, Expression, FunctionDeclaration, ImportDeclaration, MethodDeclaration, Program,
+    Statement, TemplatePart, TraitDeclaration, VariableUnpackDeclaration,
 };
 use crate::error::{Result, ZuzuRustError};
 
@@ -48,6 +48,22 @@ fn collect_statement_warnings(statements: &[Statement], warnings: &mut Vec<Strin
                 );
                 if let Some(init) = &node.init {
                     collect_expression_warnings(init, warnings);
+                }
+            }
+            Statement::VariableUnpackDeclaration(node) => {
+                collect_expression_warnings(&node.init, warnings);
+                for entry in node.pattern.entries() {
+                    collect_dict_key_warnings(&entry.key, warnings);
+                    collect_weak_decl_warning(
+                        entry.is_weak_storage,
+                        entry.declared_type.as_deref(),
+                        &entry.name,
+                        entry.line,
+                        warnings,
+                    );
+                    if let Some(default_value) = &entry.default_value {
+                        collect_expression_warnings(default_value, warnings);
+                    }
                 }
             }
             Statement::FunctionDeclaration(node) => {
@@ -425,6 +441,9 @@ impl Validator {
                 }
                 self.declare_name(&node.name, node.line, node.kind != "const")
             }
+            Statement::VariableUnpackDeclaration(node) => {
+                self.validate_variable_unpack(node, context)
+            }
             Statement::FunctionDeclaration(node) => {
                 self.declare_function_name(node)?;
                 if node.is_predeclared {
@@ -593,6 +612,42 @@ impl Validator {
                 },
             )
         })
+    }
+
+    fn validate_variable_unpack(
+        &mut self,
+        node: &VariableUnpackDeclaration,
+        context: Context,
+    ) -> Result<()> {
+        self.validate_expression(&node.init, context)?;
+        let mut names = HashSet::new();
+        for entry in node.pattern.entries() {
+            if !names.insert(entry.name.clone()) {
+                return Err(ZuzuRustError::semantic(
+                    format!("Duplicate unpacked binding '{}' in declaration", entry.name),
+                    entry.line,
+                ));
+            }
+        }
+        for entry in node.pattern.entries() {
+            self.validate_unpack_entry(entry, context)?;
+        }
+        for entry in node.pattern.entries() {
+            self.declare_name(&entry.name, entry.line, node.kind != "const")?;
+        }
+        Ok(())
+    }
+
+    fn validate_unpack_entry(
+        &mut self,
+        entry: &DeclarationBindingEntry,
+        context: Context,
+    ) -> Result<()> {
+        self.validate_dict_key(&entry.key, context)?;
+        if let Some(default_value) = &entry.default_value {
+            self.validate_expression(default_value, context)?;
+        }
+        Ok(())
     }
 
     fn validate_class(&mut self, node: &ClassDeclaration) -> Result<()> {

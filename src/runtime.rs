@@ -30,9 +30,10 @@ use self::collection::common::{
 };
 use self::executor::AsyncExecutor;
 use crate::ast::{
-    BlockStatement, CallArgument, ClassDeclaration, ClassMember, DictKey, Expression,
-    FieldDeclaration, ForStatement, FunctionDeclaration, ImportDeclaration, MethodDeclaration,
-    Parameter, Program, Statement, SwitchStatement, TemplatePart, TraitDeclaration, TryStatement,
+    BlockStatement, CallArgument, ClassDeclaration, ClassMember, DeclarationBindingEntry, DictKey,
+    Expression, FieldDeclaration, ForStatement, FunctionDeclaration, ImportDeclaration,
+    MethodDeclaration, Parameter, Program, Statement, SwitchStatement, TemplatePart,
+    TraitDeclaration, TryStatement, VariableUnpackDeclaration,
 };
 use crate::sema;
 use crate::{
@@ -1163,6 +1164,9 @@ impl Runtime {
                 );
                 Ok(value)
             }
+            Statement::VariableUnpackDeclaration(node) => {
+                self.eval_variable_unpack_declaration(node, Rc::clone(&env))
+            }
             Statement::FunctionDeclaration(node) => {
                 let func = self.make_function_from_decl(node, Rc::clone(&env));
                 let value = Value::Function(Rc::new(func));
@@ -1292,6 +1296,10 @@ impl Runtime {
                     node.kind != "const",
                     node.is_weak_storage,
                 );
+                Ok(ControlFlow::Normal)
+            }
+            Statement::VariableUnpackDeclaration(node) => {
+                self.eval_variable_unpack_declaration(node, env)?;
                 Ok(ControlFlow::Normal)
             }
             Statement::FunctionDeclaration(node) => {
@@ -1494,6 +1502,61 @@ impl Runtime {
             }
             Statement::ForStatement(node) => self.eval_for_statement(node, env),
             Statement::SwitchStatement(node) => self.eval_switch_statement(node, env),
+        }
+    }
+
+    fn eval_variable_unpack_declaration(
+        &self,
+        node: &VariableUnpackDeclaration,
+        env: Rc<Environment>,
+    ) -> Result<Value> {
+        let source = self.eval_expression(&node.init, Rc::clone(&env))?;
+        let source_value = self.deref_value(&source)?;
+        let mut resolved = Vec::new();
+        for entry in node.pattern.entries() {
+            let value = self.resolve_unpack_entry(entry, &source_value, Rc::clone(&env))?;
+            if entry.runtime_typecheck_required != Some(false) {
+                self.assert_declared_type(entry.declared_type.as_deref(), &value, &entry.name)?;
+            }
+            resolved.push((entry, value));
+        }
+        for (entry, value) in resolved {
+            env.define_with_storage(
+                entry.name.clone(),
+                value,
+                node.kind != "const",
+                entry.is_weak_storage,
+            );
+        }
+        Ok(source)
+    }
+
+    fn resolve_unpack_entry(
+        &self,
+        entry: &DeclarationBindingEntry,
+        source: &Value,
+        env: Rc<Environment>,
+    ) -> Result<Value> {
+        let key = self.eval_dict_key(&entry.key, Rc::clone(&env))?;
+        let value = match source {
+            Value::Dict(map) | Value::SystemDict(map) => map.get(&key).cloned(),
+            Value::PairList(values) => values
+                .iter()
+                .find(|(entry_key, _)| entry_key == &key)
+                .map(|(_, value)| value.clone()),
+            other => {
+                return Err(ZuzuRustError::runtime(format!(
+                    "Declaration unpacking expects Dict or PairList, got {}",
+                    other.type_name()
+                )))
+            }
+        };
+        match value {
+            Some(value) => Ok(value),
+            None => match &entry.default_value {
+                Some(default_value) => self.eval_expression(default_value, env),
+                None => Ok(Value::Null),
+            },
         }
     }
 

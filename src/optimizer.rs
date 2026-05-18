@@ -229,6 +229,20 @@ impl Optimizer<'_> {
                     node.runtime_typecheck_required = Some(false);
                 }
             }
+            Statement::VariableUnpackDeclaration(node) => {
+                self.optimize_expression(&mut node.init);
+                for entry in node.pattern.entries_mut() {
+                    self.optimize_dict_key(&mut entry.key);
+                    if let Some(default_value) = &mut entry.default_value {
+                        self.optimize_expression(default_value);
+                    }
+                    if self.options.enables(OptimizationPass::TypecheckSkip)
+                        && entry.runtime_typecheck_required == Some(false)
+                    {
+                        entry.runtime_typecheck_required = Some(false);
+                    }
+                }
+            }
             Statement::FunctionDeclaration(node) => self.optimize_block(&mut node.body),
             Statement::ClassDeclaration(node) => {
                 for member in &mut node.body {
@@ -951,6 +965,16 @@ fn collect_statement_identifiers(statement: &Statement, names: &mut HashSet<Stri
                 collect_expression_identifiers(init, names);
             }
         }
+        Statement::VariableUnpackDeclaration(node) => {
+            collect_expression_identifiers(&node.init, names);
+            for entry in node.pattern.entries() {
+                names.insert(entry.name.clone());
+                collect_dict_key_identifiers(&entry.key, names);
+                if let Some(default_value) = &entry.default_value {
+                    collect_expression_identifiers(default_value, names);
+                }
+            }
+        }
         Statement::FunctionDeclaration(node) => {
             names.insert(node.name.clone());
             for param in &node.params {
@@ -1255,6 +1279,7 @@ fn block_needs_lexical_scope(block: &BlockStatement) -> bool {
 fn statement_needs_lexical_scope(statement: &Statement) -> bool {
     match statement {
         Statement::VariableDeclaration(_)
+        | Statement::VariableUnpackDeclaration(_)
         | Statement::FunctionDeclaration(_)
         | Statement::ClassDeclaration(_)
         | Statement::TraitDeclaration(_)
@@ -1815,6 +1840,15 @@ fn propagate_constants_statement(
                 propagate_constants_expression(init, scopes, false);
             }
         }
+        Statement::VariableUnpackDeclaration(node) => {
+            propagate_constants_expression(&mut node.init, scopes, false);
+            for entry in node.pattern.entries_mut() {
+                propagate_constants_dict_key(&mut entry.key, scopes);
+                if let Some(default_value) = &mut entry.default_value {
+                    propagate_constants_expression(default_value, scopes, false);
+                }
+            }
+        }
         Statement::FunctionDeclaration(node) => {
             forget_assigned_in_block(scopes, &node.body);
         }
@@ -1994,6 +2028,11 @@ fn record_constant_declaration(
                 }
             } else {
                 forget_constant(scopes, &node.name);
+            }
+        }
+        Statement::VariableUnpackDeclaration(node) => {
+            for entry in node.pattern.entries() {
+                forget_constant(scopes, &entry.name);
             }
         }
         Statement::FunctionDeclaration(node) => forget_constant(scopes, &node.name),
@@ -2292,6 +2331,7 @@ fn forget_assigned_in_statement(scopes: &mut [HashMap<String, Expression>], stat
     match statement {
         Statement::Block(block) => forget_assigned_in_block(scopes, block),
         Statement::VariableDeclaration(_) => {}
+        Statement::VariableUnpackDeclaration(_) => {}
         Statement::FunctionDeclaration(_) => {}
         Statement::ClassDeclaration(_) => {}
         Statement::TraitDeclaration(_) => {}
@@ -2578,6 +2618,15 @@ fn annotate_statement(statement: &mut Statement, scopes: &mut Vec<HashSet<String
                 annotate_expression(init, scopes);
             }
         }
+        Statement::VariableUnpackDeclaration(node) => {
+            annotate_expression(&mut node.init, scopes);
+            for entry in node.pattern.entries_mut() {
+                annotate_dict_key(&mut entry.key, scopes);
+                if let Some(default_value) = &mut entry.default_value {
+                    annotate_expression(default_value, scopes);
+                }
+            }
+        }
         Statement::FunctionDeclaration(node) => {
             scopes.push(function_scope(&node.params));
             annotate_statements(&mut node.body.statements, scopes);
@@ -2680,6 +2729,11 @@ fn declare_statement_binding(statement: &Statement, scopes: &mut [HashSet<String
     match statement {
         Statement::VariableDeclaration(node) => {
             scope.insert(node.name.clone());
+        }
+        Statement::VariableUnpackDeclaration(node) => {
+            for entry in node.pattern.entries() {
+                scope.insert(entry.name.clone());
+            }
         }
         Statement::FunctionDeclaration(node) => {
             scope.insert(node.name.clone());

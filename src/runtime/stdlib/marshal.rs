@@ -1015,6 +1015,18 @@ fn collect_free_names_from_statement(
             }
             bound.insert(node.name.clone());
         }
+        Statement::VariableUnpackDeclaration(node) => {
+            collect_free_names_from_expr(&node.init, bound, free)?;
+            for entry in node.pattern.entries() {
+                collect_free_names_from_dict_key(&entry.key, bound, free)?;
+                if let Some(default_value) = &entry.default_value {
+                    collect_free_names_from_expr(default_value, bound, free)?;
+                }
+            }
+            for entry in node.pattern.entries() {
+                bound.insert(entry.name.clone());
+            }
+        }
         Statement::FunctionDeclaration(node) => {
             bound.insert(node.name.clone());
         }
