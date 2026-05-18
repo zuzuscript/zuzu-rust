@@ -562,6 +562,11 @@ pub enum CallArgument {
         source_file: Option<String>,
         value: Expression,
     },
+    Spread {
+        line: usize,
+        source_file: Option<String>,
+        value: Expression,
+    },
     Named {
         line: usize,
         source_file: Option<String>,
@@ -2104,6 +2109,7 @@ impl CallArgument {
     pub fn line(&self) -> usize {
         match self {
             CallArgument::Positional { line, .. } => *line,
+            CallArgument::Spread { line, .. } => *line,
             CallArgument::Named { line, .. } => *line,
         }
     }
@@ -2113,6 +2119,15 @@ impl CallArgument {
             CallArgument::Positional { line, value, .. } => {
                 write_object_start(out);
                 write_string_field(out, indent + 1, "type", "PositionalArgument", true);
+                write_number_field(out, indent + 1, "line", *line, true);
+                write_field_name(out, indent + 1, "value");
+                value.write_json(out, indent + 1);
+                out.push('\n');
+                write_object_end(out, indent);
+            }
+            CallArgument::Spread { line, value, .. } => {
+                write_object_start(out);
+                write_string_field(out, indent + 1, "type", "SpreadArgument", true);
                 write_number_field(out, indent + 1, "line", *line, true);
                 write_field_name(out, indent + 1, "value");
                 value.write_json(out, indent + 1);

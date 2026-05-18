@@ -298,6 +298,7 @@ fn collect_call_argument_warnings(arguments: &[CallArgument], warnings: &mut Vec
     for argument in arguments {
         match argument {
             CallArgument::Positional { value, .. } => collect_expression_warnings(value, warnings),
+            CallArgument::Spread { value, .. } => collect_expression_warnings(value, warnings),
             CallArgument::Named { name, value, .. } => {
                 collect_dict_key_warnings(name, warnings);
                 collect_expression_warnings(value, warnings);
@@ -1068,6 +1069,7 @@ impl Validator {
     fn validate_call_argument(&mut self, argument: &CallArgument, context: Context) -> Result<()> {
         match argument {
             CallArgument::Positional { value, .. } => self.validate_expression(value, context),
+            CallArgument::Spread { value, .. } => self.validate_expression(value, context),
             CallArgument::Named { name, value, .. } => {
                 self.validate_dict_key(name, context)?;
                 self.validate_expression(value, context)

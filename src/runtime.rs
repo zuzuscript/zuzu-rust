@@ -2677,11 +2677,7 @@ impl Runtime {
                 _ => {
                     let callee = self.eval_expression(callee, Rc::clone(&env))?;
                     let (values, named_args) =
-                        if matches!(callee, Value::Class(_) | Value::UserClass(_)) {
-                            self.eval_constructor_call_arguments(arguments, Rc::clone(&env))?
-                        } else {
-                            self.eval_call_arguments(arguments, Rc::clone(&env))?
-                        };
+                        self.eval_call_arguments(arguments, Rc::clone(&env))?;
                     self.with_current_env(env, || self.call_value(callee, values, named_args))
                 }
             },
@@ -2900,6 +2896,10 @@ impl Runtime {
                 CallArgument::Positional { value, .. } => {
                     positional.push(self.eval_expression(value, Rc::clone(&env))?);
                 }
+                CallArgument::Spread { value, .. } => {
+                    let spread_value = self.eval_expression(value, Rc::clone(&env))?;
+                    self.expand_call_spread_argument(spread_value, &mut positional, &mut named)?;
+                }
                 CallArgument::Named { name, value, .. } => {
                     named.push((
                         self.eval_dict_key(name, Rc::clone(&env))?,
@@ -2919,27 +2919,31 @@ impl Runtime {
         self.eval_call_arguments(arguments, env)
     }
 
-    fn eval_constructor_call_arguments(
+    fn expand_call_spread_argument(
         &self,
-        arguments: &[CallArgument],
-        env: Rc<Environment>,
-    ) -> Result<(Vec<Value>, Vec<(String, Value)>)> {
-        let mut positional = Vec::with_capacity(arguments.len());
-        let mut named = Vec::new();
-        for argument in arguments {
-            match argument {
-                CallArgument::Positional { value, .. } => {
-                    positional.push(self.eval_expression(value, Rc::clone(&env))?);
-                }
-                CallArgument::Named { name, value, .. } => {
-                    named.push((
-                        self.eval_dict_key(name, Rc::clone(&env))?,
-                        self.eval_expression(value, Rc::clone(&env))?,
-                    ));
-                }
+        value: Value,
+        positional: &mut Vec<Value>,
+        named: &mut Vec<(String, Value)>,
+    ) -> Result<()> {
+        let value = self.deref_value(&value)?;
+        match value {
+            Value::Array(values) | Value::SystemArray(values) => {
+                positional.extend(values);
+                Ok(())
             }
+            Value::Dict(values) | Value::SystemDict(values) => {
+                named.extend(values);
+                Ok(())
+            }
+            Value::PairList(values) => {
+                named.extend(values);
+                Ok(())
+            }
+            other => Err(ZuzuRustError::runtime(format!(
+                "spread call argument expects Array, Dict, or PairList; got {}",
+                other.type_name()
+            ))),
         }
-        Ok((positional, named))
     }
 
     fn eval_path_haystack_argument(

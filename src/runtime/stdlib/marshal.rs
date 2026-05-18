@@ -1233,6 +1233,9 @@ fn collect_free_names_from_call_arguments(
             CallArgument::Positional { value, .. } => {
                 collect_free_names_from_expr(value, bound, free)?;
             }
+            CallArgument::Spread { value, .. } => {
+                collect_free_names_from_expr(value, bound, free)?;
+            }
             CallArgument::Named { name, value, .. } => {
                 collect_free_names_from_dict_key(name, bound, free)?;
                 collect_free_names_from_expr(value, bound, free)?;

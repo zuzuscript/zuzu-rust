@@ -554,6 +554,7 @@ impl Optimizer<'_> {
     fn optimize_call_argument(&mut self, argument: &mut CallArgument) {
         match argument {
             CallArgument::Positional { value, .. } => self.optimize_expression(value),
+            CallArgument::Spread { value, .. } => self.optimize_expression(value),
             CallArgument::Named { name, value, .. } => {
                 self.optimize_dict_key(name);
                 self.optimize_expression(value);
@@ -1233,6 +1234,7 @@ fn collect_expression_identifiers(expression: &Expression, names: &mut HashSet<S
 fn collect_call_argument_identifiers(argument: &CallArgument, names: &mut HashSet<String>) {
     match argument {
         CallArgument::Positional { value, .. } => collect_expression_identifiers(value, names),
+        CallArgument::Spread { value, .. } => collect_expression_identifiers(value, names),
         CallArgument::Named { name, value, .. } => {
             collect_dict_key_identifiers(name, names);
             collect_expression_identifiers(value, names);
@@ -1361,6 +1363,7 @@ fn expression_declares_binding(expr: &Expression) -> bool {
 fn call_argument_declares_binding(argument: &CallArgument) -> bool {
     match argument {
         CallArgument::Positional { value, .. } => expression_declares_binding(value),
+        CallArgument::Spread { value, .. } => expression_declares_binding(value),
         CallArgument::Named { name, value, .. } => {
             dict_key_declares_binding(name) || expression_declares_binding(value)
         }
@@ -2206,6 +2209,9 @@ fn propagate_constants_call_argument(
         CallArgument::Positional { value, .. } => {
             propagate_constants_expression(value, scopes, false);
         }
+        CallArgument::Spread { value, .. } => {
+            propagate_constants_expression(value, scopes, false);
+        }
         CallArgument::Named { name, value, .. } => {
             propagate_constants_dict_key(name, scopes);
             propagate_constants_expression(value, scopes, false);
@@ -2463,6 +2469,7 @@ fn forget_assigned_in_call_argument(
 ) {
     match argument {
         CallArgument::Positional { value, .. } => forget_assigned_in_expression(scopes, value),
+        CallArgument::Spread { value, .. } => forget_assigned_in_expression(scopes, value),
         CallArgument::Named { name, value, .. } => {
             forget_assigned_in_dict_key(scopes, name);
             forget_assigned_in_expression(scopes, value);
@@ -2875,6 +2882,7 @@ fn annotate_expression(expr: &mut Expression, scopes: &mut Vec<HashSet<String>>)
 fn annotate_call_argument(argument: &mut CallArgument, scopes: &mut Vec<HashSet<String>>) {
     match argument {
         CallArgument::Positional { value, .. } => annotate_expression(value, scopes),
+        CallArgument::Spread { value, .. } => annotate_expression(value, scopes),
         CallArgument::Named { name, value, .. } => {
             annotate_dict_key(name, scopes);
             annotate_expression(value, scopes);

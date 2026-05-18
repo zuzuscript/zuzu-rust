@@ -225,6 +225,25 @@ fn parses_phase_a_expression_forms() {
 }
 
 #[test]
+fn dumps_spread_call_arguments_as_structured_nodes() {
+    let source = r#"
+        let got := target( 1, ...items, label: "x", ...{{ extra: 2 }} );
+    "#;
+
+    let program = parse_syntax_only(source).expect("spread call arguments should parse");
+    let json = program.to_json_pretty();
+
+    assert!(json.contains("\"type\": \"CallExpression\""));
+    assert!(json.contains("\"type\": \"SpreadArgument\""));
+    assert!(json.contains("\"type\": \"PositionalArgument\""));
+    assert!(json.contains("\"type\": \"NamedArgument\""));
+    assert!(json.contains("\"type\": \"Identifier\""));
+    assert!(json.contains("\"name\": \"items\""));
+    assert!(json.contains("\"type\": \"PairListLiteral\""));
+    assert!(json.contains("\"name\": \"extra\""));
+}
+
+#[test]
 fn skips_inline_pod_blocks() {
     let source = r#"
 =encoding utf8

@@ -586,6 +586,7 @@ fn infer_call_arguments(inferencer: &mut Inferencer, arguments: &mut [CallArgume
     for argument in arguments {
         match argument {
             CallArgument::Positional { value, .. } => this_infer_expression(inferencer, value),
+            CallArgument::Spread { value, .. } => this_infer_expression(inferencer, value),
             CallArgument::Named { name, value, .. } => {
                 infer_dict_key(inferencer, name);
                 this_infer_expression(inferencer, value);

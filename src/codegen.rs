@@ -821,6 +821,7 @@ fn render_call_arguments(arguments: &[CallArgument]) -> String {
             .iter()
             .map(|argument| match argument {
                 CallArgument::Positional { value, .. } => render_expression(value),
+                CallArgument::Spread { value, .. } => format!("...{}", render_expression(value)),
                 CallArgument::Named { name, value, .. } => {
                     format!("{}: {}", render_call_key(name), render_expression(value))
                 }

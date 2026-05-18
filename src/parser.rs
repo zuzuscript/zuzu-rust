@@ -1479,6 +1479,16 @@ impl Parser {
     }
 
     fn parse_call_argument(&mut self) -> Result<CallArgument> {
+        if self.match_operator("...") {
+            let line = self.previous_line();
+            let value = self.parse_expression()?;
+            return Ok(CallArgument::Spread {
+                line,
+                source_file: self.source_file(),
+                value,
+            });
+        }
+
         let expr = self.parse_expression()?;
         let line = expr.line();
         if self.match_operator(":") {

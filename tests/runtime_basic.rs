@@ -1338,6 +1338,242 @@ fn runs_named_args_ztest_script() {
 }
 
 #[test]
+fn runs_argument_spread_ztest_script() {
+    let runtime = Runtime::new(Vec::new());
+    let output = runtime
+        .run_script_source(
+            r#"
+            let Number _count := 0;
+
+            function pass ( String name ) {
+                ++_count;
+                say `ok ${_count} - ${name}`;
+            }
+
+            function fail ( String name ) {
+                ++_count;
+                say `not ok ${_count} - ${name}`;
+            }
+
+            function ok ( condition, String name ) {
+                if ( condition ) {
+                    pass(name);
+                }
+                else {
+                    fail(name);
+                }
+            }
+
+            function is ( got, expected, String name ) {
+                ok( got = expected, name );
+            }
+
+            function throws ( callback, String name ) {
+                try {
+                    callback();
+                    fail(name);
+                }
+                catch {
+                    pass(name);
+                }
+            }
+
+            function done_testing () {
+                say `1..${_count}`;
+            }
+
+            function positional ( ... args ) {
+                return args;
+            }
+
+            function named ( ... PairList args ) {
+                return args;
+            }
+
+            function mixed ( first ... PairList opts, Array rest ) {
+                return {
+                    first: first,
+                    opts: opts,
+                    rest: rest,
+                };
+            }
+
+            class Receiver {
+
+                method positional ( ... args ) {
+                    return args;
+                }
+
+                method mixed ( first ... PairList opts, Array rest ) {
+                    return {
+                        first: first,
+                        opts: opts,
+                        rest: rest,
+                    };
+                }
+            }
+
+            class Constructed {
+                let name with get;
+                let count with get;
+            }
+
+            let seen := [ ];
+
+            function remember ( String label, value ) {
+                seen.push(label);
+                return value;
+            }
+
+            let from_array := positional( 1, ...[ 2, 3 ], 4 );
+            is(
+                from_array,
+                [ 1, 2, 3, 4 ],
+                "Array spread expands positional arguments in place",
+            );
+
+            let from_dict := named( before: 0, ...{ alpha: 1, beta: 2 }, after: 3 );
+            is( from_dict{"before"}, 0, "explicit named arg before Dict spread binds" );
+            is( from_dict{"alpha"}, 1, "Dict spread expands alpha named arg" );
+            is( from_dict{"beta"}, 2, "Dict spread expands beta named arg" );
+            is( from_dict{"after"}, 3, "explicit named arg after Dict spread binds" );
+
+            let from_pairs := named( ...{{ a: 1, b: 2, a: 3 }} );
+            is(
+                from_pairs.keys(),
+                [ "a", "b", "a" ],
+                "PairList spread preserves pair order",
+            );
+            is(
+                from_pairs.get_all("a"),
+                [ 1, 3 ],
+                "PairList spread preserves duplicate keys",
+            );
+
+            let duplicate_order := named(
+                key: "first",
+                ...{{ key: "middle" }},
+                key: "last",
+            );
+            is(
+                duplicate_order.get_all("key"),
+                [ "first", "middle", "last" ],
+                "duplicate named args around spread preserve call argument order",
+            );
+
+            let mixed_got := mixed(
+                "head",
+                ...[ "a", "b" ],
+                explicit: "E",
+                ...{{ dup: "one", dup: "two" }},
+                "tail",
+            );
+            is( mixed_got{"first"}, "head", "mixed call keeps leading positional" );
+            is(
+                mixed_got{"rest"},
+                [ "a", "b", "tail" ],
+                "mixed call binds Array spread and trailing positional",
+            );
+            is(
+                mixed_got{"opts"}.keys(),
+                [ "explicit", "dup", "dup" ],
+                "mixed call binds explicit and PairList spread named args",
+            );
+
+            let receiver := new Receiver();
+            is(
+                receiver.positional( "r", ...[ "x", "y" ] ),
+                [ "r", "x", "y" ],
+                "normal method calls accept positional spreads",
+            );
+
+            let constructed := new Constructed( ...{ count: 7, name: "Ada" } );
+            is( constructed.get_name(), "Ada", "constructor accepts Dict spread name" );
+            is( constructed.get_count(), 7, "constructor accepts Dict spread count" );
+
+            let method_name := "mixed";
+            let dynamic_got := receiver.(method_name)(
+                "dynamic",
+                ...[ 8 ],
+                ...{{ label: "ok" }},
+                9,
+            );
+            is( dynamic_got{"first"}, "dynamic", "dynamic member call keeps receiver" );
+            is( dynamic_got{"rest"}, [ 8, 9 ], "dynamic member call accepts Array spread" );
+            is(
+                dynamic_got{"opts"}{"label"},
+                "ok",
+                "dynamic member call accepts PairList spread",
+            );
+
+            let evaluation_got := mixed(
+                remember( "a", "start" ),
+                ...remember( "b", [ "array" ] ),
+                named: remember( "c", "value" ),
+                ...remember( "d", {{ extra: "pair" }} ),
+                remember( "e", "end" ),
+            );
+            is(
+                seen,
+                [ "a", "b", "c", "d", "e" ],
+                "argument operands evaluate left-to-right with spread operands in place",
+            );
+            is(
+                evaluation_got{"rest"},
+                [ "array", "end" ],
+                "left-to-right spread evaluation still binds positional arguments",
+            );
+            is(
+                evaluation_got{"opts"}.keys(),
+                [ "named", "extra" ],
+                "left-to-right spread evaluation still binds named arguments",
+            );
+
+            throws(
+                function () {
+                    positional(...23);
+                },
+                "spreading a Number throws an Exception",
+            );
+
+            done_testing();
+            "#,
+        )
+        .expect("argument spread source should execute successfully");
+
+    assert!(output.stdout.ends_with("1..21\n"));
+    assert!(
+        !output.stdout.contains("not ok"),
+        "argument-spread.zzs emitted a failing assertion:\n{}",
+        output.stdout
+    );
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
+fn spread_call_argument_rejects_invalid_operand_type() {
+    let runtime = Runtime::new(Vec::new());
+    let err = match runtime.run_script_source(
+        r#"
+        function positional ( ... args ) {
+            return args;
+        }
+
+        positional(...23);
+        "#,
+    ) {
+        Ok(_) => panic!("invalid spread operand should fail"),
+        Err(err) => err,
+    };
+
+    let message = err.to_string();
+    assert!(
+        message.contains("spread call argument expects Array, Dict, or PairList; got Number"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
 fn runs_field_accessors_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/oop/field-accessors.zzs");
