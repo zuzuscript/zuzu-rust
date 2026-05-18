@@ -29,6 +29,10 @@ impl Runtime {
                     values.iter().map(|(_, value)| value.clone()).collect(),
                 ))
             }
+            "copy" => {
+                require_arity(name, args, 0)?;
+                Ok(Value::PairList(values.clone()))
+            }
             "enumerate" => {
                 require_arity(name, args, 0)?;
                 Ok(Value::Bag(

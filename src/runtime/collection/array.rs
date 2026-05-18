@@ -22,6 +22,10 @@ impl Runtime {
                 values.extend(args.iter().map(|value| stored_arg(value, true)));
                 Ok(Value::Array(values.clone()))
             }
+            "copy" => {
+                require_arity(name, args, 0)?;
+                Ok(Value::Array(values.clone()))
+            }
             "pop" => {
                 require_arity(name, args, 0)?;
                 Ok(values.pop().unwrap_or(Value::Null))

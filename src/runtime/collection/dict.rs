@@ -31,6 +31,10 @@ impl Runtime {
                         .collect(),
                 ))
             }
+            "copy" => {
+                require_arity(name, args, 0)?;
+                Ok(Value::Dict(values.clone()))
+            }
             "enumerate" => {
                 require_arity(name, args, 0)?;
                 Ok(Value::Bag(

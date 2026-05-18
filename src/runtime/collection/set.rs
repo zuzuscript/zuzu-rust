@@ -26,6 +26,10 @@ impl Runtime {
                 }
                 Ok(Value::Set(values.clone()))
             }
+            "copy" => {
+                require_arity(name, args, 0)?;
+                Ok(Value::Set(values.clone()))
+            }
             "remove" => {
                 require_arity(name, args, 1)?;
                 values.retain(|value| !value.strict_eq(&args[0]));

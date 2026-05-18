@@ -1617,6 +1617,169 @@ fn weak_collection_methods_drop_and_overwrite_entries() {
 }
 
 #[test]
+fn collection_copy_methods_are_shallow_and_preserve_weak_entries() {
+    let repo_root = repo_root();
+    let runtime = Runtime::new(vec![repo_root.join("stdlib/modules")]);
+
+    let output = runtime
+        .run_script_source(
+            r#"
+            from std/internals import ref_id;
+            from test/more import *;
+
+            class Owner {
+                let label with get, set;
+            }
+
+            function make_owner ( String label ) {
+                return new Owner( label: label );
+            }
+
+            let shared_child := [ "child" ];
+            let arr_owner := make_owner("array");
+            let arr := [ 1, shared_child, arr_owner ];
+            let arr_copy := arr.copy();
+            is( typeof arr_copy, "Array", "Array.copy returns an Array" );
+            is( arr_copy, arr, "Array.copy preserves values" );
+            like(
+                exception( function () { arr.copy("extra"); } ),
+                /copy\(\) expects 0 arguments/,
+                "Array.copy takes no arguments",
+            );
+            arr_copy.push(2);
+            is( arr.length(), 3, "Array.copy outer mutation leaves original length" );
+            arr_copy[1].push("copy");
+            is( arr[1].length(), 2, "Array.copy shares nested collections" );
+            is( ref_id(arr_copy[2]), ref_id(arr_owner), "Array.copy shares objects" );
+
+            let bag := <<< 1, 1, shared_child, arr_owner >>>;
+            let bag_copy := bag.copy();
+            is( typeof bag_copy, "Bag", "Bag.copy returns a Bag" );
+            is( bag_copy.count(1), 2, "Bag.copy preserves duplicate values" );
+            like(
+                exception( function () { bag.copy("extra"); } ),
+                /copy\(\) expects 0 arguments/,
+                "Bag.copy takes no arguments",
+            );
+            bag_copy.add(2);
+            is( bag.length(), 4, "Bag.copy outer mutation leaves original length" );
+            bag_copy.to_Array()[2].push("bag");
+            is( bag.to_Array()[2].length(), 3, "Bag.copy shares nested collections" );
+            is( ref_id(bag_copy.to_Array()[3]), ref_id(arr_owner), "Bag.copy shares objects" );
+
+            let set := << 1, shared_child, arr_owner >>;
+            let set_copy := set.copy();
+            is( typeof set_copy, "Set", "Set.copy returns a Set" );
+            ok( set_copy.contains(1), "Set.copy preserves scalar values" );
+            like(
+                exception( function () { set.copy("extra"); } ),
+                /copy\(\) expects 0 arguments/,
+                "Set.copy takes no arguments",
+            );
+            set_copy.add(2);
+            is( set.length(), 3, "Set.copy outer mutation leaves original length" );
+            set_copy.to_Array()[1].push("set");
+            is( set.to_Array()[1].length(), 4, "Set.copy shares nested collections" );
+            is( ref_id(set_copy.to_Array()[2]), ref_id(arr_owner), "Set.copy shares objects" );
+
+            let dict := { alpha: 1, child: shared_child, owner: arr_owner };
+            let dict_copy := dict.copy();
+            is( typeof dict_copy, "Dict", "Dict.copy returns a Dict" );
+            is( dict_copy{"alpha"}, 1, "Dict.copy preserves values" );
+            like(
+                exception( function () { dict.copy("extra"); } ),
+                /copy\(\) expects 0 arguments/,
+                "Dict.copy takes no arguments",
+            );
+            dict_copy.set( "beta", 2 );
+            ok( !dict.exists("beta"), "Dict.copy outer mutation leaves original keys" );
+            dict_copy{"child"}.push("dict");
+            is( dict{"child"}.length(), 5, "Dict.copy shares nested collections" );
+            is( ref_id(dict_copy{"owner"}), ref_id(arr_owner), "Dict.copy shares objects" );
+
+            let pairs := {{ alpha: 1, alpha: 2, child: shared_child, owner: arr_owner }};
+            let pairs_copy := pairs.copy();
+            is( typeof pairs_copy, "PairList", "PairList.copy returns a PairList" );
+            is(
+                pairs_copy.kv(),
+                [ "alpha", 1, "alpha", 2, "child", shared_child, "owner", arr_owner ],
+                "PairList.copy preserves order and duplicate keys",
+            );
+            like(
+                exception( function () { pairs.copy("extra"); } ),
+                /copy\(\) expects 0 arguments/,
+                "PairList.copy takes no arguments",
+            );
+            pairs_copy.add( "beta", 2 );
+            is( pairs.length(), 4, "PairList.copy outer mutation leaves original length" );
+            pairs_copy{"child"}.push("pairlist");
+            is( pairs{"child"}.length(), 6, "PairList.copy shares nested collections" );
+            is( ref_id(pairs_copy{"owner"}), ref_id(arr_owner), "PairList.copy shares objects" );
+
+            let weak_owner := make_owner("weak");
+            let weak_arr := [];
+            weak_arr.push_weak(weak_owner);
+            let weak_arr_copy := weak_arr.copy();
+            is( weak_arr_copy[0].get_label(), "weak", "Array.copy keeps live weak entry" );
+
+            let weak_bag := <<< >>>;
+            weak_bag.add_weak(weak_owner);
+            let weak_bag_copy := weak_bag.copy();
+            is(
+                weak_bag_copy.to_Array()[0].get_label(),
+                "weak",
+                "Bag.copy keeps live weak entry",
+            );
+
+            let weak_set := << >>;
+            weak_set.add_weak(weak_owner);
+            let weak_set_copy := weak_set.copy();
+            is(
+                weak_set_copy.to_Array()[0].get_label(),
+                "weak",
+                "Set.copy keeps live weak entry",
+            );
+
+            let weak_dict := {};
+            weak_dict.set_weak( "owner", weak_owner );
+            let weak_dict_copy := weak_dict.copy();
+            is(
+                weak_dict_copy{"owner"}.get_label(),
+                "weak",
+                "Dict.copy keeps live weak entry",
+            );
+
+            let weak_pairs := {{ }};
+            weak_pairs.add_weak( "owner", weak_owner );
+            let weak_pairs_copy := weak_pairs.copy();
+            is(
+                weak_pairs_copy{"owner"}.get_label(),
+                "weak",
+                "PairList.copy keeps live weak entry",
+            );
+
+            weak_owner := null;
+            is( weak_arr_copy[0], null, "Array.copy preserves weak metadata" );
+            is( weak_bag_copy.to_Array()[0], null, "Bag.copy preserves weak metadata" );
+            is( weak_set_copy.to_Array()[0], null, "Set.copy preserves weak metadata" );
+            is( weak_dict_copy{"owner"}, null, "Dict.copy preserves weak metadata" );
+            is( weak_pairs_copy{"owner"}, null, "PairList.copy preserves weak metadata" );
+
+            done_testing();
+            "#,
+        )
+        .expect("collection copy script should execute");
+
+    assert!(output.stdout.contains("1..40"), "got {}", output.stdout);
+    assert!(
+        !output.stdout.contains("not ok"),
+        "got failing TAP:\n{}",
+        output.stdout
+    );
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
 fn runs_binary_string_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/operators/binary-string.zzs");
