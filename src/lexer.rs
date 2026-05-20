@@ -90,8 +90,9 @@ const KEYWORDS: &[&str] = &[
 
 const TWO_CHAR_OPERATORS: &[&str] = &[
     ":=", "+=", "-=", "*=", "/=", "_=", "~=", "**", "==", "!=", "<=", ">=", "++", "--", "->", "@?",
-    "@@", "?:", "×=", "÷=", "≤", "≥", "≠", "≡", "≢", "≶", "≷", "⋀", "⋁", "⊻", "⊼", "∈", "∉", "⋃",
-    "⋂", "∖", "¬", "√", "⊂", "⊃", ">>", "<<", "⌊", "⌋", "⌈", "⌉", "«", "»", "→",
+    "@@", "?:", "|>", "<|", "×=", "÷=", "≤", "≥", "≠", "≡", "≢", "≶", "≷", "⋀", "⋁", "⊻",
+    "⊼", "∈", "∉", "⋃", "⋂", "∖", "¬", "√", "⊂", "⊃", ">>", "<<", "⌊", "⌋", "⌈", "⌉",
+    "«", "»", "→",
 ];
 
 const THREE_CHAR_OPERATORS: &[&str] = &["**=", "?:=", "<=>", ".(", "⊂⊃", "<<<", ">>>", "..."];
@@ -181,6 +182,16 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
             continue;
         }
 
+        if ch == '^' && i + 1 < chars.len() && chars[i + 1] == '^' {
+            tokens.push(Token::new(
+                TokenKind::Identifier("^^".to_owned()),
+                Span::new(start, start + 2, start_line, start_column),
+            ));
+            i += 2;
+            column += 2;
+            continue;
+        }
+
         if let Some(operator) = match_operator(&chars, i) {
             let width = operator.chars().count();
             let operator = if operator == "→" { "->" } else { operator };
@@ -216,7 +227,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
             '.' | ':' | '?' | '+' | '-' | '*' | '/' | '_' | '=' | '<' | '>' | '!' | '&' | '|'
             | '^' | '~' | '@' | '\\' | '×' | '÷' | '≤' | '≥' | '≠' | '≡' | '≢' | '≶' | '≷'
             | '⋀' | '⋁' | '⊻' | '⊼' | '∈' | '∉' | '⋃' | '⋂' | '∖' | '¬' | '√' | '⊂' | '⊃' | '⌊'
-            | '⌋' | '⌈' | '⌉' | '«' | '»' => {
+            | '⌋' | '⌈' | '⌉' | '«' | '»' | '▷' | '◁' => {
                 tokens.push(Token::new(
                     TokenKind::Operator(ch.to_string()),
                     Span::new(start, start + 1, start_line, start_column),

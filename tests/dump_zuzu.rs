@@ -79,6 +79,25 @@ fn dump_zuzu_renders_declaration_unpacking_patterns() {
 }
 
 #[test]
+fn dump_zuzu_renders_primary_chain_operator_spellings() {
+    let output = run_zuzu(
+        &[
+            "--dump-zuzu",
+            "-e",
+            "say(4 |> ^^ + 1); say((^^ + 1) <| 4);",
+        ],
+        &repo_root(),
+    );
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "say 4 ▷ ^^ + 1;\nsay ^^ + 1 ◁ 4;\n"
+    );
+}
+
+#[test]
 fn dump_modes_are_mutually_exclusive() {
     let output = run_zuzu(&["--dump-ast", "--dump-zuzu", "-e", "say 1;"], &repo_root());
 

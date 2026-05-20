@@ -19,21 +19,22 @@ pub struct Parser {
 }
 
 const PREC_ASSIGNMENT: u8 = 1;
-const PREC_TERNARY: u8 = 2;
-const PREC_OR: u8 = 3;
-const PREC_XOR: u8 = 4;
-const PREC_AND: u8 = 5;
-const PREC_EQUALITY: u8 = 6;
-const PREC_COMPARISON: u8 = 7;
-const PREC_BITWISE_OR: u8 = 8;
-const PREC_BITWISE_XOR: u8 = 9;
-const PREC_BITWISE_AND: u8 = 10;
-const PREC_SET: u8 = 11;
-const PREC_CONCAT: u8 = 12;
-const PREC_ADDITIVE: u8 = 13;
-const PREC_MULTIPLICATIVE: u8 = 14;
-const PREC_EXPONENT: u8 = 15;
-const PREC_PREFIX: u8 = 16;
+const PREC_CHAIN: u8 = 2;
+const PREC_TERNARY: u8 = 3;
+const PREC_OR: u8 = 4;
+const PREC_XOR: u8 = 5;
+const PREC_AND: u8 = 6;
+const PREC_EQUALITY: u8 = 7;
+const PREC_COMPARISON: u8 = 8;
+const PREC_BITWISE_OR: u8 = 9;
+const PREC_BITWISE_XOR: u8 = 10;
+const PREC_BITWISE_AND: u8 = 11;
+const PREC_SET: u8 = 12;
+const PREC_CONCAT: u8 = 13;
+const PREC_ADDITIVE: u8 = 14;
+const PREC_MULTIPLICATIVE: u8 = 15;
+const PREC_EXPONENT: u8 = 16;
+const PREC_PREFIX: u8 = 17;
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
@@ -979,6 +980,15 @@ impl Parser {
                 precedence + 1
             };
             let right = self.parse_expression_prec(next_prec)?;
+            if let Some(direction) = chain_direction(&operator) {
+                if expression_chain_direction(&left)
+                    .is_some_and(|left_direction| left_direction != direction)
+                    || expression_chain_direction(&right)
+                        .is_some_and(|right_direction| right_direction != direction)
+                {
+                    return Err(self.error_current("Mixed chain directions require parentheses"));
+                }
+            }
             left = Expression::Binary {
                 line: left.line(),
                 source_file: left.source_file().map(str::to_owned),
@@ -1936,6 +1946,8 @@ impl Parser {
         let text = self.current_text();
         let entry = match text.as_str() {
             "or" | "⋁" => Some((PREC_OR, false)),
+            "▷" | "|>" => Some((PREC_CHAIN, false)),
+            "◁" | "<|" => Some((PREC_CHAIN, true)),
             "xor" | "⊻" => Some((PREC_XOR, false)),
             "and" | "⋀" | "nand" | "⊼" => Some((PREC_AND, false)),
             "==" | "≡" | "!=" | "≢" | "default" => Some((PREC_EQUALITY, false)),
@@ -2114,6 +2126,9 @@ impl Parser {
         match self.current_kind() {
             TokenKind::Identifier(value) => {
                 let value = value.clone();
+                if value == "^^" {
+                    return Err(self.error_current("'^^' is reserved for the chain placeholder"));
+                }
                 self.advance();
                 Ok(value)
             }
@@ -2125,6 +2140,9 @@ impl Parser {
         match self.current_kind() {
             TokenKind::Identifier(value) => {
                 let value = value.clone();
+                if value == "^^" {
+                    return Err(self.error_current("'^^' is reserved for the chain placeholder"));
+                }
                 self.advance();
                 Ok(value)
             }
@@ -2217,6 +2235,21 @@ fn token_text(kind: &TokenKind) -> String {
         TokenKind::Operator(value) => value.clone(),
         TokenKind::Punct(value) => value.to_string(),
         TokenKind::Eof => "<eof>".to_owned(),
+    }
+}
+
+fn chain_direction(operator: &str) -> Option<&'static str> {
+    match operator {
+        "▷" | "|>" => Some("right"),
+        "◁" | "<|" => Some("left"),
+        _ => None,
+    }
+}
+
+fn expression_chain_direction(expression: &Expression) -> Option<&'static str> {
+    match expression {
+        Expression::Binary { operator, .. } => chain_direction(operator),
+        _ => None,
     }
 }
 

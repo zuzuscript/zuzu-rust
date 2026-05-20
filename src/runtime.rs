@@ -3060,6 +3060,18 @@ impl Runtime {
                 let rhs = self.value_is_truthy(&self.eval_expression(right, env)?)?;
                 Ok(Value::Boolean(!(lhs && rhs)))
             }
+            "▷" | "|>" => {
+                let value = self.eval_expression(left, Rc::clone(&env))?;
+                let chain_env = Rc::new(Environment::new(Some(env)));
+                chain_env.define("^^".to_owned(), value, false);
+                self.eval_expression(right, chain_env)
+            }
+            "◁" | "<|" => {
+                let value = self.eval_expression(right, Rc::clone(&env))?;
+                let chain_env = Rc::new(Environment::new(Some(env)));
+                chain_env.define("^^".to_owned(), value, false);
+                self.eval_expression(left, chain_env)
+            }
             "..." => {
                 let start =
                     self.value_to_number(&self.eval_expression(left, Rc::clone(&env))?)? as i64;

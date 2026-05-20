@@ -868,6 +868,20 @@ impl Validator {
                 right,
                 ..
             } => {
+                if operator == "▷" || operator == "|>" {
+                    self.validate_expression(left, context)?;
+                    return self.with_scope(|this| {
+                        this.declare_name("^^", right.line(), false)?;
+                        this.validate_expression(right, context)
+                    });
+                }
+                if operator == "◁" || operator == "<|" {
+                    self.validate_expression(right, context)?;
+                    return self.with_scope(|this| {
+                        this.declare_name("^^", left.line(), false)?;
+                        this.validate_expression(left, context)
+                    });
+                }
                 self.validate_expression(left, context)?;
                 if operator == "can"
                     && matches!(

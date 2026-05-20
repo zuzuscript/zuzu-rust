@@ -1773,6 +1773,8 @@ pub fn preferred_operator(operator: &str) -> &str {
         "subsetof" => "⊂",
         "supersetof" => "⊃",
         "equivalentof" => "⊂⊃",
+        "|>" => "▷",
+        "<|" => "◁",
         "*=" => "×=",
         "/=" => "÷=",
         other => other,
