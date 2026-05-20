@@ -92,6 +92,35 @@ fn operator_aliases_are_normalized_to_preferred_spellings() {
 }
 
 #[test]
+fn chain_inline_optimizes_simple_chains_at_o2() {
+    let source = "say foo() ▷ bar(^^) ▷ baz(^^);";
+
+    let o1_json = compile_json(source, optimization_options(OptimizationLevel::O1));
+    assert!(o1_json.contains("\"operator\": \"▷\""));
+
+    let o2_json = compile_json(source, optimization_options(OptimizationLevel::O2));
+    assert!(!o2_json.contains("\"operator\": \"▷\""));
+    assert!(o2_json.contains("\"name\": \"baz\""));
+    assert!(o2_json.contains("\"name\": \"bar\""));
+    assert!(o2_json.contains("\"name\": \"foo\""));
+}
+
+#[test]
+fn chain_inline_keeps_non_simple_chains() {
+    let repeated_placeholder = compile_json(
+        "say foo() ▷ ^^ + ^^ ▷ baz(^^);",
+        optimization_options(OptimizationLevel::O2),
+    );
+    assert!(repeated_placeholder.contains("\"operator\": \"▷\""));
+
+    let captured_placeholder = compile_json(
+        "say foo() ▷ function() { return ^^; };",
+        optimization_options(OptimizationLevel::O2),
+    );
+    assert!(captured_placeholder.contains("\"operator\": \"▷\""));
+}
+
+#[test]
 fn regex_cache_metadata_is_controlled_by_pass() {
     let source = r#"say "abc" ~ /a/i;"#;
 
@@ -446,13 +475,16 @@ fn optimization_level_membership_matches_documented_defaults() {
     assert!(o1.enables(OptimizationPass::ConstantFolding));
     assert!(o1.enables(OptimizationPass::BlockScopeElision));
     assert!(!o1.enables(OptimizationPass::IdentifierResolution));
+    assert!(!o1.enables(OptimizationPass::ChainInline));
 
     let o2 = optimization_options(OptimizationLevel::O2);
     assert!(o2.enables(OptimizationPass::IdentifierResolution));
     assert!(o2.enables(OptimizationPass::OperatorEnum));
+    assert!(o2.enables(OptimizationPass::ChainInline));
     assert!(!o2.enables(OptimizationPass::SwitchIndexing));
 
     let o3 = optimization_options(OptimizationLevel::O3);
+    assert!(o3.enables(OptimizationPass::ChainInline));
     assert!(o3.enables(OptimizationPass::SwitchIndexing));
     assert!(o3.enables(OptimizationPass::RangeArrayLoopLowering));
 }

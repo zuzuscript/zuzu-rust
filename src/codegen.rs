@@ -62,6 +62,15 @@ pub fn render_expression(expression: &Expression) -> String {
     render_expr(expression, 0)
 }
 
+fn is_synthetic_here_lambda(params: &[Parameter]) -> bool {
+    params.len() == 1
+        && params[0].name == "^^"
+        && params[0].optional
+        && !params[0].variadic
+        && params[0].declared_type.is_none()
+        && params[0].default_value.is_none()
+}
+
 pub fn render_function_literal(
     params: &[Parameter],
     return_type: Option<&str>,
@@ -759,15 +768,19 @@ fn render_expr(expression: &Expression, parent_prec: u8) -> String {
             is_async,
             ..
         } => {
-            let mut out = String::new();
-            if *is_async {
-                out.push_str("async ");
+            if !*is_async && is_synthetic_here_lambda(params) {
+                (format!("-> {}", render_expression(body)), PREC_ATOM)
+            } else {
+                let mut out = String::new();
+                if *is_async {
+                    out.push_str("async ");
+                }
+                out.push_str("fn ");
+                render_parameter_list(params, &mut out);
+                out.push_str(" -> ");
+                out.push_str(&render_expression(body));
+                (out, PREC_ATOM)
             }
-            out.push_str("fn ");
-            render_parameter_list(params, &mut out);
-            out.push_str(" -> ");
-            out.push_str(&render_expression(body));
-            (out, PREC_ATOM)
         }
         Expression::FunctionExpression {
             params,

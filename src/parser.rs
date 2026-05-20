@@ -129,6 +129,23 @@ impl Parser {
         };
 
         if statement_supports_postfix_condition(&statement) {
+            if self.match_keyword("for") {
+                let iterable = self.parse_expression()?;
+                return Ok(Statement::ForStatement(ForStatement {
+                    line: statement.line(),
+                    source_file: statement.source_file().map(str::to_owned),
+                    binding_kind: Some("const".to_owned()),
+                    variable: "^^".to_owned(),
+                    iterable,
+                    body: BlockStatement {
+                        line: statement.line(),
+                        source_file: statement.source_file().map(str::to_owned),
+                        statements: vec![statement],
+                        needs_lexical_scope: false,
+                    },
+                    else_block: None,
+                }));
+            }
             if let Some(keyword) = self.match_postfix_condition_keyword() {
                 let test = self.parse_expression()?;
                 return Ok(Statement::PostfixConditionalStatement(
@@ -679,16 +696,25 @@ impl Parser {
         let line = self.current_line();
         self.expect_keyword("for")?;
         self.expect_punct('(', "Expected '(' after for")?;
-        let binding_kind = if self.match_keyword("let") {
-            Some("let".to_owned())
+        let (binding_kind, variable, iterable) = if self.match_keyword("let") {
+            let variable = self.expect_identifier("Expected loop variable")?;
+            self.expect_keyword("in")?;
+            (Some("let".to_owned()), variable, self.parse_expression()?)
         } else if self.match_keyword("const") {
-            Some("const".to_owned())
+            let variable = self.expect_identifier("Expected loop variable")?;
+            self.expect_keyword("in")?;
+            (Some("const".to_owned()), variable, self.parse_expression()?)
+        } else if self.check_identifier() && self.peek_keyword("in") {
+            let variable = self.expect_identifier("Expected loop variable")?;
+            self.expect_keyword("in")?;
+            (None, variable, self.parse_expression()?)
         } else {
-            None
+            (
+                Some("const".to_owned()),
+                "^^".to_owned(),
+                self.parse_expression()?,
+            )
         };
-        let variable = self.expect_identifier("Expected loop variable")?;
-        self.expect_keyword("in")?;
-        let iterable = self.parse_expression()?;
         self.expect_punct(')', "Expected ')' after for header")?;
         let body = self.parse_block_statement()?;
         let else_block = if self.match_keyword("else") {
@@ -1010,6 +1036,7 @@ impl Parser {
             TokenKind::Keyword("await") => self.parse_await_expression(),
             TokenKind::Keyword("spawn") => self.parse_spawn_expression(),
             TokenKind::Keyword("fn") => self.parse_lambda_expression(),
+            TokenKind::Operator(op) if op == "->" => self.parse_arrow_lambda_expression(),
             TokenKind::Keyword("async") => self.parse_async_expression(),
             TokenKind::Operator(op)
                 if ["+", "-", "!", "~", "++", "--", "¬", "√", "\\"].contains(&op.as_str()) =>
@@ -1553,6 +1580,28 @@ impl Parser {
         })
     }
 
+    fn parse_arrow_lambda_expression(&mut self) -> Result<Expression> {
+        let line = self.current_line();
+        self.expect_operator("->", "Expected '->'")?;
+        let body = self.parse_expression()?;
+        Ok(Expression::Lambda {
+            line,
+            source_file: self.source_file(),
+            params: vec![Parameter {
+                line,
+                source_file: self.source_file(),
+                declared_type: None,
+                name: "^^".to_owned(),
+                optional: true,
+                variadic: false,
+                default_value: None,
+            }],
+            body: Box::new(body),
+            is_async: false,
+            inferred_type: None,
+        })
+    }
+
     fn parse_function_expression(&mut self) -> Result<Expression> {
         self.parse_function_expression_with_async(false)
     }
@@ -2070,6 +2119,13 @@ impl Parser {
         matches!(
             self.tokens.get(self.index + 1).map(|token| &token.kind),
             Some(TokenKind::Punct(value)) if *value == punct
+        )
+    }
+
+    fn peek_keyword(&self, keyword: &str) -> bool {
+        matches!(
+            self.tokens.get(self.index + 1).map(|token| &token.kind),
+            Some(TokenKind::Keyword(value)) if *value == keyword
         )
     }
 

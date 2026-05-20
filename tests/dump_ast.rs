@@ -669,6 +669,12 @@ fn diagnostics_are_stable_for_representative_failures() {
         redeclare_err.to_string(),
         "semantic error at 1:1: Redeclaration of 'foo' in the same scope",
     );
+
+    let explicit_here_param_err =
+        parse_program("let f := fn ^^ -> ^^;").expect_err("explicit ^^ parameter should fail");
+    assert!(explicit_here_param_err
+        .to_string()
+        .contains("'^^' is reserved for the chain placeholder"));
 }
 
 #[test]

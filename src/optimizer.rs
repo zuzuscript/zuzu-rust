@@ -25,6 +25,7 @@ pub enum OptimizationPass {
     IdentifierResolution,
     TypecheckSkip,
     OperatorEnum,
+    ChainInline,
     CollectionPresize,
     SwitchIndexing,
     RangeArrayLoopLowering,
@@ -39,6 +40,7 @@ const ALL_OPTIMIZATION_PASSES: &[OptimizationPass] = &[
     OptimizationPass::IdentifierResolution,
     OptimizationPass::TypecheckSkip,
     OptimizationPass::OperatorEnum,
+    OptimizationPass::ChainInline,
     OptimizationPass::CollectionPresize,
     OptimizationPass::SwitchIndexing,
     OptimizationPass::RangeArrayLoopLowering,
@@ -55,6 +57,7 @@ impl OptimizationPass {
             OptimizationPass::IdentifierResolution => "identifier-resolution",
             OptimizationPass::TypecheckSkip => "typecheck-skip",
             OptimizationPass::OperatorEnum => "operator-enum",
+            OptimizationPass::ChainInline => "chain-inline",
             OptimizationPass::CollectionPresize => "collection-presize",
             OptimizationPass::SwitchIndexing => "switch-indexing",
             OptimizationPass::RangeArrayLoopLowering => "range-array-loop-lowering",
@@ -92,6 +95,7 @@ impl OptimizationOptions {
             OptimizationLevel::O2 | OptimizationLevel::O3 => {
                 enabled.insert(OptimizationPass::IdentifierResolution);
                 enabled.insert(OptimizationPass::OperatorEnum);
+                enabled.insert(OptimizationPass::ChainInline);
             }
             _ => {}
         }
@@ -547,6 +551,11 @@ impl Optimizer<'_> {
             | Expression::BooleanLiteral { .. }
             | Expression::NullLiteral { .. } => {}
         }
+        if self.options.enables(OptimizationPass::ChainInline) {
+            if let Some(inlined) = inline_simple_chain(expr) {
+                *expr = inlined;
+            }
+        }
         if self.options.enables(OptimizationPass::ConstantFolding) {
             if let Some(folded) = fold_expression(expr) {
                 *expr = folded;
@@ -600,6 +609,373 @@ impl Optimizer<'_> {
             }
             other => Some(vec![other]),
         }
+    }
+}
+
+#[derive(Default)]
+struct HereUsage {
+    free: usize,
+    captured: usize,
+    unsupported: bool,
+}
+
+fn inline_simple_chain(expr: &Expression) -> Option<Expression> {
+    let direction = optimized_expression_chain_direction(expr)?;
+    let mut base = None;
+    let mut stages = Vec::new();
+    collect_chain_parts(expr, direction, &mut base, &mut stages)?;
+    let mut current = base?;
+    for stage in stages {
+        let usage = analyse_here_usage(&stage, false);
+        if usage.free != 1 || usage.captured != 0 || usage.unsupported {
+            return None;
+        }
+        current = substitute_here(&stage, &current);
+    }
+    Some(current)
+}
+
+fn collect_chain_parts(
+    expr: &Expression,
+    direction: &'static str,
+    base: &mut Option<Expression>,
+    stages: &mut Vec<Expression>,
+) -> Option<()> {
+    match expr {
+        Expression::Binary {
+            operator,
+            left,
+            right,
+            ..
+        } if optimized_chain_direction(operator) == Some(direction) => {
+            if direction == "right" {
+                collect_chain_parts(left, direction, base, stages)?;
+                stages.push((**right).clone());
+            } else {
+                collect_chain_parts(right, direction, base, stages)?;
+                stages.push((**left).clone());
+            }
+            Some(())
+        }
+        Expression::Binary { operator, .. } if optimized_chain_direction(operator).is_some() => {
+            None
+        }
+        other if base.is_none() => {
+            *base = Some(other.clone());
+            Some(())
+        }
+        _ => None,
+    }
+}
+
+fn optimized_chain_direction(operator: &str) -> Option<&'static str> {
+    match operator {
+        "▷" | "|>" => Some("right"),
+        "◁" | "<|" => Some("left"),
+        _ => None,
+    }
+}
+
+fn optimized_expression_chain_direction(expression: &Expression) -> Option<&'static str> {
+    match expression {
+        Expression::Binary { operator, .. } => optimized_chain_direction(operator),
+        _ => None,
+    }
+}
+
+fn analyse_here_usage(expr: &Expression, in_closure: bool) -> HereUsage {
+    let mut usage = HereUsage::default();
+    collect_here_usage(expr, in_closure, &mut usage);
+    usage
+}
+
+fn collect_here_usage(expr: &Expression, in_closure: bool, usage: &mut HereUsage) {
+    match expr {
+        Expression::Identifier { name, .. } if name == "^^" => {
+            if in_closure {
+                usage.captured += 1;
+            } else {
+                usage.free += 1;
+            }
+        }
+        Expression::Unary { argument, .. } => {
+            collect_here_usage(argument, in_closure, usage);
+        }
+        Expression::Binary {
+            operator,
+            left,
+            right,
+            ..
+        } => {
+            if optimized_chain_direction(operator).is_some() {
+                usage.unsupported = true;
+                return;
+            }
+            collect_here_usage(left, in_closure, usage);
+            collect_here_usage(right, in_closure, usage);
+        }
+        Expression::Ternary {
+            test,
+            consequent,
+            alternate,
+            ..
+        } => {
+            collect_here_usage(test, in_closure, usage);
+            collect_here_usage(consequent, in_closure, usage);
+            collect_here_usage(alternate, in_closure, usage);
+        }
+        Expression::DefinedOr { left, right, .. } => {
+            collect_here_usage(left, in_closure, usage);
+            collect_here_usage(right, in_closure, usage);
+        }
+        Expression::Call {
+            callee, arguments, ..
+        } => {
+            collect_here_usage(callee, in_closure, usage);
+            for argument in arguments {
+                collect_call_argument_here_usage(argument, in_closure, usage);
+            }
+        }
+        Expression::MemberAccess { object, .. } => collect_here_usage(object, in_closure, usage),
+        Expression::Index { object, index, .. } => {
+            collect_here_usage(object, in_closure, usage);
+            collect_here_usage(index, in_closure, usage);
+        }
+        Expression::ArrayLiteral { elements, .. } => {
+            for element in elements {
+                collect_here_usage(element, in_closure, usage);
+            }
+        }
+        Expression::Lambda { body, .. } => collect_here_usage(body, true, usage),
+        Expression::FunctionExpression { body, .. } => {
+            if block_contains_here(body) {
+                usage.captured += 1;
+            }
+        }
+        Expression::Identifier { .. }
+        | Expression::NumberLiteral { .. }
+        | Expression::StringLiteral { .. }
+        | Expression::RegexLiteral { .. }
+        | Expression::BooleanLiteral { .. }
+        | Expression::NullLiteral { .. } => {}
+        _ => usage.unsupported = true,
+    }
+}
+
+fn collect_call_argument_here_usage(
+    argument: &CallArgument,
+    in_closure: bool,
+    usage: &mut HereUsage,
+) {
+    match argument {
+        CallArgument::Positional { value, .. } | CallArgument::Spread { value, .. } => {
+            collect_here_usage(value, in_closure, usage);
+        }
+        CallArgument::Named { value, .. } => collect_here_usage(value, in_closure, usage),
+    }
+}
+
+fn block_contains_here(block: &BlockStatement) -> bool {
+    block.statements.iter().any(statement_contains_here)
+}
+
+fn statement_contains_here(statement: &Statement) -> bool {
+    match statement {
+        Statement::Block(block) => block_contains_here(block),
+        Statement::VariableDeclaration(node) => node
+            .init
+            .as_ref()
+            .map(expression_contains_here)
+            .unwrap_or(false),
+        Statement::VariableUnpackDeclaration(node) => expression_contains_here(&node.init),
+        Statement::IfStatement(node) => {
+            expression_contains_here(&node.test)
+                || block_contains_here(&node.consequent)
+                || node
+                    .alternate
+                    .as_ref()
+                    .map(|alternate| statement_contains_here(alternate))
+                    .unwrap_or(false)
+        }
+        Statement::WhileStatement(node) => {
+            expression_contains_here(&node.test) || block_contains_here(&node.body)
+        }
+        Statement::ForStatement(node) => {
+            expression_contains_here(&node.iterable) || block_contains_here(&node.body)
+        }
+        Statement::ReturnStatement(node) => node
+            .argument
+            .as_ref()
+            .map(expression_contains_here)
+            .unwrap_or(false),
+        Statement::ThrowStatement(node) => expression_contains_here(&node.argument),
+        Statement::DieStatement(node) => expression_contains_here(&node.argument),
+        Statement::PostfixConditionalStatement(node) => {
+            statement_contains_here(&node.statement) || expression_contains_here(&node.test)
+        }
+        Statement::KeywordStatement(node) => node.arguments.iter().any(expression_contains_here),
+        Statement::ExpressionStatement(node) => expression_contains_here(&node.expression),
+        _ => false,
+    }
+}
+
+fn expression_contains_here(expr: &Expression) -> bool {
+    let usage = analyse_here_usage(expr, false);
+    usage.free > 0 || usage.captured > 0
+}
+
+fn substitute_here(expr: &Expression, replacement: &Expression) -> Expression {
+    match expr {
+        Expression::Identifier { name, .. } if name == "^^" => replacement.clone(),
+        Expression::Unary {
+            line,
+            source_file,
+            operator,
+            argument,
+            inferred_type,
+        } => Expression::Unary {
+            line: *line,
+            source_file: source_file.clone(),
+            operator: operator.clone(),
+            argument: Box::new(substitute_here(argument, replacement)),
+            inferred_type: inferred_type.clone(),
+        },
+        Expression::Binary {
+            line,
+            source_file,
+            operator,
+            left,
+            right,
+            inferred_type,
+        } => Expression::Binary {
+            line: *line,
+            source_file: source_file.clone(),
+            operator: operator.clone(),
+            left: Box::new(substitute_here(left, replacement)),
+            right: Box::new(substitute_here(right, replacement)),
+            inferred_type: inferred_type.clone(),
+        },
+        Expression::Ternary {
+            line,
+            source_file,
+            test,
+            consequent,
+            alternate,
+            inferred_type,
+        } => Expression::Ternary {
+            line: *line,
+            source_file: source_file.clone(),
+            test: Box::new(substitute_here(test, replacement)),
+            consequent: Box::new(substitute_here(consequent, replacement)),
+            alternate: Box::new(substitute_here(alternate, replacement)),
+            inferred_type: inferred_type.clone(),
+        },
+        Expression::DefinedOr {
+            line,
+            source_file,
+            left,
+            right,
+            inferred_type,
+        } => Expression::DefinedOr {
+            line: *line,
+            source_file: source_file.clone(),
+            left: Box::new(substitute_here(left, replacement)),
+            right: Box::new(substitute_here(right, replacement)),
+            inferred_type: inferred_type.clone(),
+        },
+        Expression::Call {
+            line,
+            source_file,
+            callee,
+            arguments,
+            inferred_type,
+        } => Expression::Call {
+            line: *line,
+            source_file: source_file.clone(),
+            callee: Box::new(substitute_here(callee, replacement)),
+            arguments: arguments
+                .iter()
+                .map(|argument| substitute_call_argument(argument, replacement))
+                .collect(),
+            inferred_type: inferred_type.clone(),
+        },
+        Expression::MemberAccess {
+            line,
+            source_file,
+            object,
+            member,
+            inferred_type,
+        } => Expression::MemberAccess {
+            line: *line,
+            source_file: source_file.clone(),
+            object: Box::new(substitute_here(object, replacement)),
+            member: member.clone(),
+            inferred_type: inferred_type.clone(),
+        },
+        Expression::Index {
+            line,
+            source_file,
+            object,
+            index,
+            inferred_type,
+        } => Expression::Index {
+            line: *line,
+            source_file: source_file.clone(),
+            object: Box::new(substitute_here(object, replacement)),
+            index: Box::new(substitute_here(index, replacement)),
+            inferred_type: inferred_type.clone(),
+        },
+        Expression::ArrayLiteral {
+            line,
+            source_file,
+            elements,
+            capacity_hint,
+            inferred_type,
+        } => Expression::ArrayLiteral {
+            line: *line,
+            source_file: source_file.clone(),
+            elements: elements
+                .iter()
+                .map(|element| substitute_here(element, replacement))
+                .collect(),
+            capacity_hint: *capacity_hint,
+            inferred_type: inferred_type.clone(),
+        },
+        other => other.clone(),
+    }
+}
+
+fn substitute_call_argument(argument: &CallArgument, replacement: &Expression) -> CallArgument {
+    match argument {
+        CallArgument::Positional {
+            line,
+            source_file,
+            value,
+        } => CallArgument::Positional {
+            line: *line,
+            source_file: source_file.clone(),
+            value: substitute_here(value, replacement),
+        },
+        CallArgument::Spread {
+            line,
+            source_file,
+            value,
+        } => CallArgument::Spread {
+            line: *line,
+            source_file: source_file.clone(),
+            value: substitute_here(value, replacement),
+        },
+        CallArgument::Named {
+            line,
+            source_file,
+            name,
+            value,
+        } => CallArgument::Named {
+            line: *line,
+            source_file: source_file.clone(),
+            name: name.clone(),
+            value: substitute_here(value, replacement),
+        },
     }
 }
 
