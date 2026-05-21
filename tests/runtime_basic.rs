@@ -858,6 +858,37 @@ fn zero_arg_dot_syntax_invokes_method_instead_of_reading_property() {
 }
 
 #[test]
+fn new_expression_allows_postfix_member_calls() {
+    let repo_root = repo_root();
+    let runtime = Runtime::from_repo_root(&repo_root);
+
+    let output = runtime
+        .run_script_source(
+            r#"
+			trait Labelled {
+				method label () {
+					return self.get_name() _ "!";
+				}
+			}
+
+			class Box {
+				let String name with get;
+				method upper () {
+					return uc( self.get_name() );
+				}
+			}
+
+			say new Box( name: "Ada" ).upper();
+			say new Box with Labelled( name: "Zoe" ).label();
+			"#,
+        )
+        .expect("new expression should support postfix method calls");
+
+    assert_eq!(output.stdout, "ADA\nZoe!\n");
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
 fn runs_string_more_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/operators/string-more.zzs");

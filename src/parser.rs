@@ -1121,18 +1121,23 @@ impl Parser {
             arguments,
             inferred_type: None,
         };
-        Ok(Expression::Unary {
+        let expr = Expression::Unary {
             line,
             source_file: self.source_file(),
             operator: "new".to_owned(),
             argument: Box::new(argument),
             traits,
             inferred_type: None,
-        })
+        };
+        self.parse_postfix_suffixes(expr)
     }
 
     fn parse_postfix_expression(&mut self) -> Result<Expression> {
-        let mut expr = self.parse_primary_expression()?;
+        let expr = self.parse_primary_expression()?;
+        self.parse_postfix_suffixes(expr)
+    }
+
+    fn parse_postfix_suffixes(&mut self, mut expr: Expression) -> Result<Expression> {
         loop {
             if self.match_punct('(') {
                 let arguments = self.parse_call_arguments_after_open()?;
