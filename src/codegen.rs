@@ -621,15 +621,38 @@ fn render_expr(expression: &Expression, parent_prec: u8) -> String {
         ),
         Expression::TemplateLiteral { parts, .. } => (render_template_literal(parts), PREC_ATOM),
         Expression::Unary {
-            operator, argument, ..
+            operator,
+            argument,
+            traits,
+            ..
         } => {
-            let argument = render_expr(argument, PREC_PREFIX);
-            let text = if is_word_operator(operator) {
-                format!("{operator} {argument}")
+            if operator == "new" && !traits.is_empty() {
+                if let Expression::Call {
+                    callee, arguments, ..
+                } = argument.as_ref()
+                {
+                    (
+                        format!(
+                            "new {} with {}{}",
+                            render_expr(callee, PREC_POSTFIX),
+                            traits.join(", "),
+                            render_call_arguments(arguments)
+                        ),
+                        PREC_PREFIX,
+                    )
+                } else {
+                    let argument = render_expr(argument, PREC_PREFIX);
+                    (format!("{operator} {argument}"), PREC_PREFIX)
+                }
             } else {
-                format!("{operator}{argument}")
-            };
-            (text, PREC_PREFIX)
+                let argument = render_expr(argument, PREC_PREFIX);
+                let text = if is_word_operator(operator) {
+                    format!("{operator} {argument}")
+                } else {
+                    format!("{operator}{argument}")
+                };
+                (text, PREC_PREFIX)
+            }
         }
         Expression::Binary {
             operator,

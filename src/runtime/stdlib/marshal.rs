@@ -1123,7 +1123,14 @@ fn collect_free_names_from_expr(
                 }
             }
         }
-        Expression::Unary { argument, .. } => {
+        Expression::Unary {
+            argument, traits, ..
+        } => {
+            for trait_name in traits {
+                if !bound.contains(trait_name) {
+                    free.insert(trait_name.clone());
+                }
+            }
             collect_free_names_from_expr(argument, bound, free)?;
         }
         Expression::Binary { left, right, .. }
@@ -1681,12 +1688,31 @@ fn load_code_record(
     let private = runtime.marshal_child_env(Rc::clone(shared));
     install_captures(runtime, &private, id, record)?;
     let expression_result = record.kind == CODE_FUNCTION;
-    let value = runtime.eval_marshal_code_value_in_env(
+    let mut value = runtime.eval_marshal_code_value_in_env(
         &record.source,
         &record.binding_name,
-        private,
+        Rc::clone(&private),
         expression_result,
     )?;
+    if matches!(record.kind, CODE_CLASS | CODE_TRAIT) {
+        let expected_name = if record.kind == CODE_CLASS {
+            declared_code_name(&record.source, "class")
+        } else {
+            declared_code_name(&record.source, "trait")
+        };
+        if let Some(name) = expected_name {
+            let expected_ok = if record.kind == CODE_CLASS {
+                matches!(value, Value::UserClass(_))
+            } else {
+                matches!(value, Value::Trait(_))
+            };
+            if !expected_ok {
+                if let Some((candidate, _)) = runtime.marshal_binding(&private, &name) {
+                    value = candidate;
+                }
+            }
+        }
+    }
     let ok = match record.kind {
         CODE_FUNCTION => matches!(value, Value::Function(_)),
         CODE_CLASS => matches!(value, Value::UserClass(_)),
@@ -1705,6 +1731,18 @@ fn load_code_record(
         )));
     }
     Ok(value)
+}
+
+fn declared_code_name(source: &str, keyword: &str) -> Option<String> {
+    let mut words = source
+        .split(|ch: char| !(ch == '_' || ch.is_ascii_alphanumeric()))
+        .filter(|word| !word.is_empty());
+    while let Some(word) = words.next() {
+        if word == keyword {
+            return words.next().map(str::to_owned);
+        }
+    }
+    None
 }
 
 fn install_captures(

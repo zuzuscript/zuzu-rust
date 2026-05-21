@@ -82,6 +82,13 @@ pub(super) fn call(
             Value::Shared(value) => Value::String(format!("{:p}", std::rc::Rc::as_ptr(value))),
             Value::Object(object) => Value::String(format!("{:p}", std::rc::Rc::as_ptr(object))),
             Value::Ref(reference) => Value::String(format!("{:p}", std::rc::Rc::as_ptr(reference))),
+            Value::UserClass(class) => {
+                Value::String(format!("class:{:p}", std::rc::Rc::as_ptr(class)))
+            }
+            Value::Trait(trait_value) => {
+                Value::String(format!("trait:{:p}", std::rc::Rc::as_ptr(trait_value)))
+            }
+            Value::Class(name) => Value::String(format!("class:{name}")),
             Value::Array(_)
             | Value::Set(_)
             | Value::Bag(_)

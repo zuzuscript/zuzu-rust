@@ -73,6 +73,7 @@ pub struct RuntimeInner {
     optimizations: OptimizationOptions,
     module_cache: RefCell<HashMap<String, ModuleRecord>>,
     regex_cache: RefCell<HashMap<(String, String), Regex>>,
+    per_object_trait_class_cache: RefCell<HashMap<String, Rc<UserClassValue>>>,
     module_loading: RefCell<HashSet<String>>,
     output: RefCell<ExecutionOutput>,
     special_props: RefCell<Vec<HashMap<String, Value>>>,
@@ -665,6 +666,7 @@ impl Runtime {
                 optimizations: OptimizationOptions::default(),
                 module_cache: RefCell::new(HashMap::new()),
                 regex_cache: RefCell::new(HashMap::new()),
+                per_object_trait_class_cache: RefCell::new(HashMap::new()),
                 module_loading: RefCell::new(HashSet::new()),
                 output: RefCell::new(ExecutionOutput::default()),
                 special_props: RefCell::new(vec![HashMap::new()]),
@@ -2578,9 +2580,12 @@ impl Runtime {
                 Ok(Value::String(out))
             }
             Expression::Unary {
-                operator, argument, ..
+                operator,
+                argument,
+                traits,
+                ..
             } => match operator.as_str() {
-                "new" => self.eval_new_expression(argument, env),
+                "new" => self.eval_new_expression(argument, traits, env),
                 "not" | "!" | "¬" => Ok(Value::Boolean(
                     !self.value_is_truthy(&self.eval_expression(argument, env)?)?,
                 )),
@@ -5905,7 +5910,12 @@ impl Runtime {
         Ok(value)
     }
 
-    fn eval_new_expression(&self, argument: &Expression, env: Rc<Environment>) -> Result<Value> {
+    fn eval_new_expression(
+        &self,
+        argument: &Expression,
+        traits: &[String],
+        env: Rc<Environment>,
+    ) -> Result<Value> {
         match argument {
             Expression::Call {
                 callee, arguments, ..
@@ -5917,17 +5927,24 @@ impl Runtime {
                     _ => unreachable!(),
                 };
                 let (args, named_args) = self.eval_call_arguments(arguments, Rc::clone(&env))?;
-                let mut receiver = self.eval_new_expression(object, env)?;
+                let mut receiver = self.eval_new_expression(object, &[], env)?;
                 self.call_method_named(&mut receiver, member, &args, named_args)
             }
             Expression::MemberAccess { object, member, .. } => {
-                let mut receiver = self.eval_new_expression(object, env)?;
+                let mut receiver = self.eval_new_expression(object, &[], env)?;
                 self.call_method(&mut receiver, member, &[])
             }
             Expression::Call {
                 callee, arguments, ..
             } => {
-                let callee = self.eval_expression(callee, Rc::clone(&env))?;
+                let mut callee = self.eval_expression(callee, Rc::clone(&env))?;
+                if !traits.is_empty() {
+                    callee = Value::UserClass(self.per_object_trait_class(
+                        callee,
+                        traits,
+                        Rc::clone(&env),
+                    )?);
+                }
                 let (args, named_args) = self.eval_call_arguments(arguments, env)?;
                 self.call_value(callee, args, named_args)
             }
@@ -5935,6 +5952,97 @@ impl Runtime {
                 "new expects a constructor call expression",
             )),
         }
+    }
+
+    fn per_object_trait_class(
+        &self,
+        base_value: Value,
+        trait_names: &[String],
+        env: Rc<Environment>,
+    ) -> Result<Rc<UserClassValue>> {
+        let (class_name, base, base_key) = match base_value {
+            Value::UserClass(class) => (
+                class.name.clone(),
+                ClassBase::User(Rc::clone(&class)),
+                format!("u:{:p}", Rc::as_ptr(&class)),
+            ),
+            Value::Class(name) => (
+                name.as_ref().clone(),
+                ClassBase::Builtin(name.as_ref().clone()),
+                format!("b:{}", name),
+            ),
+            other => {
+                return Err(ZuzuRustError::runtime(format!(
+                    "new with traits expects a Class, got {}",
+                    self.typeof_name(&other)
+                )))
+            }
+        };
+
+        let mut traits = Vec::new();
+        let mut key_parts = vec![base_key];
+        for trait_name in trait_names {
+            match env.get(trait_name)? {
+                Value::Trait(trait_value) => {
+                    key_parts.push(format!("t:{:p}", Rc::as_ptr(&trait_value)));
+                    traits.push(trait_value);
+                }
+                other => {
+                    return Err(ZuzuRustError::runtime(format!(
+                        "'{}' is not a trait (got {})",
+                        trait_name,
+                        self.typeof_name(&other)
+                    )))
+                }
+            }
+        }
+        let cache_key = key_parts.join("\u{1f}");
+        if let Some(class) = self.per_object_trait_class_cache.borrow().get(&cache_key) {
+            return Ok(Rc::clone(class));
+        }
+
+        let class_env = Rc::new(Environment::new(Some(env)));
+        class_env.define(
+            "__zuzu_per_object_base".to_owned(),
+            match &base {
+                ClassBase::User(class) => Value::UserClass(Rc::clone(class)),
+                ClassBase::Builtin(name) => Value::Class(Rc::new(name.clone())),
+            },
+            false,
+        );
+        let source_trait_names = traits
+            .iter()
+            .enumerate()
+            .map(|(index, trait_value)| {
+                let name = format!("__zuzu_per_object_trait_{index}");
+                class_env.define(name.clone(), Value::Trait(Rc::clone(trait_value)), false);
+                name
+            })
+            .collect::<Vec<_>>();
+
+        let class = Rc::new(UserClassValue {
+            name: class_name.clone(),
+            base: Some(base),
+            traits,
+            fields: Vec::new(),
+            methods: HashMap::new(),
+            static_methods: HashMap::new(),
+            nested_classes: HashMap::new(),
+            source_decl: Some(ClassDeclaration {
+                line: 0,
+                source_file: None,
+                name: class_name,
+                base: Some("__zuzu_per_object_base".to_owned()),
+                traits: source_trait_names,
+                body: Vec::new(),
+                shorthand: true,
+            }),
+            closure_env: Some(class_env),
+        });
+        self.per_object_trait_class_cache
+            .borrow_mut()
+            .insert(cache_key, Rc::clone(&class));
+        Ok(class)
     }
 
     fn construct_builtin_class(

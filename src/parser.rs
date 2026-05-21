@@ -1035,6 +1035,7 @@ impl Parser {
             TokenKind::Keyword("do") => self.parse_do_expression(),
             TokenKind::Keyword("await") => self.parse_await_expression(),
             TokenKind::Keyword("spawn") => self.parse_spawn_expression(),
+            TokenKind::Keyword("new") => self.parse_new_expression(),
             TokenKind::Keyword("fn") => self.parse_lambda_expression(),
             TokenKind::Operator(op) if op == "->" => self.parse_arrow_lambda_expression(),
             TokenKind::Keyword("async") => self.parse_async_expression(),
@@ -1049,11 +1050,11 @@ impl Parser {
                     source_file: self.source_file(),
                     operator,
                     argument: Box::new(argument),
+                    traits: Vec::new(),
                     inferred_type: None,
                 })
             }
             TokenKind::Keyword("not")
-            | TokenKind::Keyword("new")
             | TokenKind::Keyword("abs")
             | TokenKind::Keyword("sqrt")
             | TokenKind::Keyword("floor")
@@ -1072,11 +1073,62 @@ impl Parser {
                     source_file: self.source_file(),
                     operator,
                     argument: Box::new(argument),
+                    traits: Vec::new(),
                     inferred_type: None,
                 })
             }
             _ => self.parse_postfix_expression(),
         }
+    }
+
+    fn parse_new_expression(&mut self) -> Result<Expression> {
+        let line = self.current_line();
+        self.expect_keyword("new")?;
+        let mut callee = self.parse_primary_expression()?;
+        loop {
+            if self.match_operator(".") {
+                let member = self.expect_name("Expected member name after '.'")?;
+                callee = Expression::MemberAccess {
+                    line: callee.line(),
+                    source_file: callee.source_file().map(str::to_owned),
+                    object: Box::new(callee),
+                    member,
+                    inferred_type: None,
+                };
+                continue;
+            }
+            if self.match_punct('{') {
+                let key = self.parse_dict_key_until_rbrace()?;
+                self.expect_punct('}', "Expected '}' after dict access")?;
+                callee = Expression::DictAccess {
+                    line: callee.line(),
+                    source_file: callee.source_file().map(str::to_owned),
+                    object: Box::new(callee),
+                    key: Box::new(key),
+                    inferred_type: None,
+                };
+                continue;
+            }
+            break;
+        }
+        let traits = self.parse_trait_composition_list()?;
+        self.expect_punct('(', "Expected '(' after class name in new expression")?;
+        let arguments = self.parse_call_arguments_after_open()?;
+        let argument = Expression::Call {
+            line: callee.line(),
+            source_file: callee.source_file().map(str::to_owned),
+            callee: Box::new(callee),
+            arguments,
+            inferred_type: None,
+        };
+        Ok(Expression::Unary {
+            line,
+            source_file: self.source_file(),
+            operator: "new".to_owned(),
+            argument: Box::new(argument),
+            traits,
+            inferred_type: None,
+        })
     }
 
     fn parse_postfix_expression(&mut self) -> Result<Expression> {
@@ -1949,6 +2001,7 @@ impl Parser {
             source_file: self.source_file(),
             operator: operator.to_owned(),
             argument: Box::new(argument),
+            traits: Vec::new(),
             inferred_type: None,
         })
     }

@@ -832,12 +832,14 @@ fn substitute_here(expr: &Expression, replacement: &Expression) -> Expression {
             source_file,
             operator,
             argument,
+            traits,
             inferred_type,
         } => Expression::Unary {
             line: *line,
             source_file: source_file.clone(),
             operator: operator.clone(),
             argument: Box::new(substitute_here(argument, replacement)),
+            traits: traits.clone(),
             inferred_type: inferred_type.clone(),
         },
         Expression::Binary {
@@ -1125,6 +1127,7 @@ fn lower_range_array_loop(statement: &Statement) -> Option<Statement> {
                 source_file: source_file.clone(),
                 operator: "¬".to_owned(),
                 argument: Box::new(identifier_expression(line, source_file.clone(), &seen_name)),
+                traits: Vec::new(),
                 inferred_type: None,
             },
             consequent: else_block.clone(),
@@ -1795,6 +1798,7 @@ fn fold_expression(expr: &Expression) -> Option<Expression> {
             source_file,
             operator,
             argument,
+            traits: _,
             inferred_type,
         } => fold_unary(
             *line,

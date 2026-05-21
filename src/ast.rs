@@ -398,6 +398,7 @@ pub enum Expression {
         source_file: Option<String>,
         operator: String,
         argument: Box<Expression>,
+        traits: Vec<String>,
         inferred_type: Option<String>,
     },
     Binary {
@@ -1730,6 +1731,7 @@ impl Expression {
                 line,
                 operator,
                 argument,
+                traits,
                 ..
             } => {
                 write_object_start(out);
@@ -1744,6 +1746,11 @@ impl Expression {
                     operator_kind(operator),
                     true,
                 );
+                if !traits.is_empty() {
+                    write_field_name(out, indent + 1, "traits");
+                    write_string_array(out, indent + 1, traits);
+                    out.push_str(",\n");
+                }
                 write_field_name(out, indent + 1, "argument");
                 argument.write_json(out, indent + 1);
                 out.push('\n');
