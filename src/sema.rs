@@ -195,7 +195,7 @@ fn collect_expression_warnings(expression: &Expression, warnings: &mut Vec<Strin
                 collect_expression_warnings(&entry.value, warnings);
             }
         }
-        Expression::TemplateLiteral { parts, .. } => {
+        Expression::TemplateLiteral { parts, .. } | Expression::RegexLiteral { parts, .. } => {
             for part in parts {
                 if let TemplatePart::Expression { expression, .. } = part {
                     collect_expression_warnings(expression, warnings);
@@ -304,7 +304,7 @@ fn collect_expression_warnings(expression: &Expression, warnings: &mut Vec<Strin
         Expression::Identifier { .. }
         | Expression::NumberLiteral { .. }
         | Expression::StringLiteral { .. }
-        | Expression::RegexLiteral { .. }
+        | Expression::BinaryStringLiteral { .. }
         | Expression::BooleanLiteral { .. }
         | Expression::NullLiteral { .. } => {}
     }
@@ -821,9 +821,15 @@ impl Validator {
             Expression::Identifier { name, line, .. } => self.require_name(name, *line),
             Expression::NumberLiteral { .. }
             | Expression::StringLiteral { .. }
-            | Expression::RegexLiteral { .. }
+            | Expression::BinaryStringLiteral { .. }
             | Expression::BooleanLiteral { .. }
             | Expression::NullLiteral { .. } => Ok(()),
+            Expression::RegexLiteral { parts, .. } => {
+                for part in parts {
+                    self.validate_template_part(part, context)?;
+                }
+                Ok(())
+            }
             Expression::ArrayLiteral { elements, .. }
             | Expression::SetLiteral { elements, .. }
             | Expression::BagLiteral { elements, .. } => {

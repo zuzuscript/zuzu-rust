@@ -1283,14 +1283,31 @@ impl Parser {
                     inferred_type: None,
                 })
             }
-            TokenKind::Regex { pattern, flags } => {
+            TokenKind::BinaryString(bytes) => {
+                let bytes = bytes.clone();
+                self.advance();
+                Ok(Expression::BinaryStringLiteral {
+                    line: self.previous_line(),
+                    source_file: self.source_file(),
+                    bytes,
+                    inferred_type: None,
+                })
+            }
+            TokenKind::Regex {
+                pattern,
+                parts,
+                flags,
+            } => {
                 let pattern = pattern.clone();
+                let parts = parts.clone();
                 let flags = flags.clone();
                 self.advance();
+                let parts = self.parse_template_parts(parts)?;
                 Ok(Expression::RegexLiteral {
                     line: self.previous_line(),
                     source_file: self.source_file(),
                     pattern,
+                    parts,
                     flags,
                     cache_key: None,
                     inferred_type: None,
@@ -1300,34 +1317,7 @@ impl Parser {
                 let line = self.current_line();
                 let parts = parts.clone();
                 self.advance();
-                let mut ast_parts = Vec::new();
-                for part in parts {
-                    match part {
-                        TokenTemplatePart::Text { line, value } => {
-                            ast_parts.push(AstTemplatePart::Text {
-                                line,
-                                source_file: self.source_file(),
-                                value,
-                            })
-                        }
-                        TokenTemplatePart::Expr { line, source } => {
-                            let padded_source =
-                                format!("{}{}", "\n".repeat(line.saturating_sub(1)), source,);
-                            let expression = crate::parse_expression_with_source_file(
-                                &padded_source,
-                                self.source_file.as_deref(),
-                            )
-                            .map_err(|_| {
-                                ZuzuRustError::semantic("invalid template interpolation", line)
-                            })?;
-                            ast_parts.push(AstTemplatePart::Expression {
-                                line: expression.line(),
-                                source_file: expression.source_file().map(str::to_owned),
-                                expression: Box::new(expression),
-                            });
-                        }
-                    }
-                }
+                let ast_parts = self.parse_template_parts(parts)?;
                 Ok(Expression::TemplateLiteral {
                     line,
                     source_file: self.source_file(),
@@ -1378,6 +1368,34 @@ impl Parser {
             TokenKind::Operator(op) if op == "⌈" => self.parse_grouped_unary("ceil", "⌉"),
             _ => Err(self.error_current("Expected expression")),
         }
+    }
+
+    fn parse_template_parts(&self, parts: Vec<TokenTemplatePart>) -> Result<Vec<AstTemplatePart>> {
+        let mut ast_parts = Vec::new();
+        for part in parts {
+            match part {
+                TokenTemplatePart::Text { line, value } => ast_parts.push(AstTemplatePart::Text {
+                    line,
+                    source_file: self.source_file(),
+                    value,
+                }),
+                TokenTemplatePart::Expr { line, source } => {
+                    let padded_source =
+                        format!("{}{}", "\n".repeat(line.saturating_sub(1)), source);
+                    let expression = crate::parse_expression_with_source_file(
+                        &padded_source,
+                        self.source_file.as_deref(),
+                    )
+                    .map_err(|_| ZuzuRustError::semantic("invalid template interpolation", line))?;
+                    ast_parts.push(AstTemplatePart::Expression {
+                        line: expression.line(),
+                        source_file: expression.source_file().map(str::to_owned),
+                        expression: Box::new(expression),
+                    });
+                }
+            }
+        }
+        Ok(ast_parts)
     }
 
     fn parse_super_call_expression(&mut self) -> Result<Expression> {
@@ -2344,7 +2362,8 @@ fn token_text(kind: &TokenKind) -> String {
         TokenKind::Identifier(value) => value.clone(),
         TokenKind::Number(value) => value.clone(),
         TokenKind::String(value) => value.clone(),
-        TokenKind::Regex { pattern, flags } => format!("/{pattern}/{flags}"),
+        TokenKind::BinaryString(bytes) => String::from_utf8_lossy(bytes).into_owned(),
+        TokenKind::Regex { pattern, flags, .. } => format!("/{pattern}/{flags}"),
         TokenKind::Template(_) => "<template>".to_owned(),
         TokenKind::Operator(value) => value.clone(),
         TokenKind::Punct(value) => value.to_string(),

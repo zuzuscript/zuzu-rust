@@ -6,7 +6,12 @@ pub enum TokenKind {
     Identifier(String),
     Number(String),
     String(String),
-    Regex { pattern: String, flags: String },
+    BinaryString(Vec<u8>),
+    Regex {
+        pattern: String,
+        parts: Vec<TemplatePart>,
+        flags: String,
+    },
     Template(Vec<TemplatePart>),
     Operator(String),
     Punct(char),

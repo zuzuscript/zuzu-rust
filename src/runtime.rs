@@ -2486,16 +2486,26 @@ impl Runtime {
                 })?))
             }
             Expression::StringLiteral { value, .. } => Ok(Value::String(value.clone())),
+            Expression::BinaryStringLiteral { bytes, .. } => Ok(Value::BinaryString(bytes.clone())),
             Expression::RegexLiteral {
                 pattern,
+                parts,
                 flags,
                 cache_key,
                 ..
             } => {
-                if cache_key.is_some() && self.optimizations.enables(OptimizationPass::RegexCache) {
+                if parts.is_empty()
+                    && cache_key.is_some()
+                    && self.optimizations.enables(OptimizationPass::RegexCache)
+                {
                     let _ = self.compile_regex(pattern, flags)?;
                 }
-                Ok(Value::Regex(pattern.clone(), flags.clone()))
+                let pattern = if parts.is_empty() {
+                    pattern.clone()
+                } else {
+                    self.render_template_parts(parts, Rc::clone(&env))?
+                };
+                Ok(Value::Regex(pattern, flags.clone()))
             }
             Expression::BooleanLiteral { value, .. } => Ok(Value::Boolean(*value)),
             Expression::NullLiteral { .. } => Ok(Value::Null),
@@ -2567,17 +2577,7 @@ impl Runtime {
                 Ok(Value::PairList(values))
             }
             Expression::TemplateLiteral { parts, .. } => {
-                let mut out = String::new();
-                for part in parts {
-                    match part {
-                        TemplatePart::Text { value, .. } => out.push_str(value),
-                        TemplatePart::Expression { expression, .. } => {
-                            let value = self.eval_expression(expression, Rc::clone(&env))?;
-                            out.push_str(&self.render_value(&value)?);
-                        }
-                    }
-                }
-                Ok(Value::String(out))
+                Ok(Value::String(self.render_template_parts(parts, env)?))
             }
             Expression::Unary {
                 operator,
@@ -2950,6 +2950,24 @@ impl Runtime {
                 self.eval_super_call(values, env)
             }
         }
+    }
+
+    fn render_template_parts(
+        &self,
+        parts: &[TemplatePart],
+        env: Rc<Environment>,
+    ) -> Result<String> {
+        let mut out = String::new();
+        for part in parts {
+            match part {
+                TemplatePart::Text { value, .. } => out.push_str(value),
+                TemplatePart::Expression { expression, .. } => {
+                    let value = self.eval_expression(expression, Rc::clone(&env))?;
+                    out.push_str(&self.render_value(&value)?);
+                }
+            }
+        }
+        Ok(out)
     }
 
     fn eval_call_arguments(
@@ -6651,18 +6669,33 @@ impl Runtime {
         weak_write: bool,
         env: Rc<Environment>,
     ) -> Result<Value> {
-        let idx = self.value_to_number(&self.eval_expression(index, Rc::clone(&env))?)? as usize;
+        let index_value = self.eval_expression(index, Rc::clone(&env))?;
         let object_value = self.eval_expression(object, Rc::clone(&env))?;
         if let Value::Shared(shared) = &object_value {
             let mut current = shared.borrow().clone();
             return match &mut current {
                 Value::Array(values) => {
+                    let idx = self.value_to_number(&index_value)? as usize;
                     if idx >= values.len() {
                         values.resize(idx + 1, Value::Null);
                     }
                     values[idx] = value.clone().stored_with_weak_policy(weak_write);
                     *shared.borrow_mut() = current;
                     Ok(value)
+                }
+                Value::String(text) => {
+                    let replacement = match value {
+                        Value::String(text) => text,
+                        _ => {
+                            return Err(ZuzuRustError::runtime(
+                                "string index assignment requires a String value",
+                            ))
+                        }
+                    };
+                    let (from, to) = self.string_index_range(text, &index_value)?;
+                    let updated = replace_char_range(text, from, to, replacement.chars());
+                    *shared.borrow_mut() = Value::String(updated);
+                    Ok(Value::String(replacement))
                 }
                 Value::SystemArray(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
                 other => Err(ZuzuRustError::runtime(format!(
@@ -6674,12 +6707,27 @@ impl Runtime {
         if let Value::Ref(reference) | Value::AliasRef(reference) = object_value {
             return match self.deref_value(&Value::AliasRef(Rc::clone(&reference)))? {
                 Value::Array(mut values) => {
+                    let idx = self.value_to_number(&index_value)? as usize;
                     if idx >= values.len() {
                         values.resize(idx + 1, Value::Null);
                     }
                     values[idx] = value.clone().stored_with_weak_policy(weak_write);
                     let _ = self.assign_reference(reference, Value::Array(values))?;
                     Ok(value)
+                }
+                Value::String(text) => {
+                    let replacement = match value {
+                        Value::String(text) => text,
+                        _ => {
+                            return Err(ZuzuRustError::runtime(
+                                "string index assignment requires a String value",
+                            ))
+                        }
+                    };
+                    let (from, to) = self.string_index_range(&text, &index_value)?;
+                    let updated = replace_char_range(&text, from, to, replacement.chars());
+                    let _ = self.assign_reference(reference, Value::String(updated))?;
+                    Ok(Value::String(replacement))
                 }
                 Value::SystemArray(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
                 other => Err(ZuzuRustError::runtime(format!(
@@ -6690,6 +6738,7 @@ impl Runtime {
         }
         match object_value {
             Value::Array(mut values) => {
+                let idx = self.value_to_number(&index_value)? as usize;
                 if idx >= values.len() {
                     values.resize(idx + 1, Value::Null);
                 }
@@ -6702,6 +6751,28 @@ impl Runtime {
                     _ => {
                         self.assign_lvalue(object, Value::Array(values), false, env)?;
                         Ok(value)
+                    }
+                }
+            }
+            Value::String(text) => {
+                let replacement = match value {
+                    Value::String(text) => text,
+                    _ => {
+                        return Err(ZuzuRustError::runtime(
+                            "string index assignment requires a String value",
+                        ))
+                    }
+                };
+                let (from, to) = self.string_index_range(&text, &index_value)?;
+                let updated = replace_char_range(&text, from, to, replacement.chars());
+                match object {
+                    Expression::Identifier { name, .. } => {
+                        env.assign(name, Value::String(updated))?;
+                        Ok(Value::String(replacement))
+                    }
+                    _ => {
+                        self.assign_lvalue(object, Value::String(updated), false, env)?;
+                        Ok(Value::String(replacement))
                     }
                 }
             }
@@ -6876,19 +6947,9 @@ impl Runtime {
                                     ))
                                 }
                             };
-                            let mut chars = text.chars().collect::<Vec<_>>();
-                            let start = match start_value {
-                                Value::Null => 0,
-                                ref other => self.value_to_number(other)? as usize,
-                            };
-                            let count = match count_value {
-                                Value::Null => chars.len().saturating_sub(start),
-                                ref other => self.value_to_number(other)? as usize,
-                            };
-                            let from = start.min(chars.len());
-                            let to = (from + count).min(chars.len());
-                            chars.splice(from..to, replacement.chars());
-                            let updated = chars.into_iter().collect::<String>();
+                            let (from, to) =
+                                self.string_slice_range(text, &start_value, &count_value)?;
+                            let updated = replace_char_range(text, from, to, replacement.chars());
                             *shared.borrow_mut() = Value::String(updated);
                             Ok(Value::String(replacement))
                         }
@@ -6933,19 +6994,16 @@ impl Runtime {
                             ))
                         }
                     };
-                    let mut chars = text.chars().collect::<Vec<_>>();
-                    let start = match start_value {
-                        Value::Null => 0,
-                        ref other => self.value_to_number(other)? as usize,
-                    };
-                    let count = match count_value {
-                        Value::Null => chars.len().saturating_sub(start),
-                        ref other => self.value_to_number(other)? as usize,
-                    };
-                    let from = start.min(chars.len());
-                    let to = (from + count).min(chars.len());
-                    chars.splice(from..to, replacement.chars());
-                    env.assign(name, Value::String(chars.into_iter().collect()))?;
+                    let (from, to) = self.string_slice_range(&text, &start_value, &count_value)?;
+                    env.assign(
+                        name,
+                        Value::String(replace_char_range(
+                            &text,
+                            from,
+                            to,
+                            replacement.chars(),
+                        )),
+                    )?;
                     Ok(Value::String(replacement))
                 }
                 _ => Err(ZuzuRustError::runtime(
@@ -6955,6 +7013,41 @@ impl Runtime {
         } else {
             Err(ZuzuRustError::runtime("unsupported assignment target"))
         }
+    }
+
+    fn string_slice_range(
+        &self,
+        text: &str,
+        start_value: &Value,
+        count_value: &Value,
+    ) -> Result<(usize, usize)> {
+        let len = text.chars().count() as isize;
+        let mut start = match start_value {
+            Value::Null => 0,
+            other => self.value_to_number(other)? as isize,
+        };
+        if start < 0 {
+            start += len;
+        }
+        start = start.clamp(0, len);
+        let count = match count_value {
+            Value::Null => len - start,
+            other => self.value_to_number(other)? as isize,
+        }
+        .max(0);
+        let end = (start + count).clamp(0, len);
+        Ok((start as usize, end as usize))
+    }
+
+    fn string_index_range(&self, text: &str, index_value: &Value) -> Result<(usize, usize)> {
+        let len = text.chars().count() as isize;
+        let mut index = self.value_to_number(index_value)? as isize;
+        if index < 0 {
+            index += len;
+        }
+        index = index.clamp(0, len);
+        let end = (index + 1).clamp(0, len);
+        Ok((index as usize, end as usize))
     }
 
     fn apply_regex_replacement(
@@ -9256,6 +9349,17 @@ fn resolve_index(len: usize, index: isize) -> Option<usize> {
     } else {
         None
     }
+}
+
+fn replace_char_range(
+    text: &str,
+    from: usize,
+    to: usize,
+    replacement: impl IntoIterator<Item = char>,
+) -> String {
+    let mut chars = text.chars().collect::<Vec<_>>();
+    chars.splice(from..to, replacement);
+    chars.into_iter().collect()
 }
 
 fn dict_eq(left: &HashMap<String, Value>, right: &HashMap<String, Value>) -> bool {

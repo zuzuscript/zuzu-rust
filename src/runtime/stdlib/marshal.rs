@@ -1100,9 +1100,16 @@ fn collect_free_names_from_expr(
         }
         Expression::NumberLiteral { .. }
         | Expression::StringLiteral { .. }
-        | Expression::RegexLiteral { .. }
+        | Expression::BinaryStringLiteral { .. }
         | Expression::BooleanLiteral { .. }
         | Expression::NullLiteral { .. } => {}
+        Expression::RegexLiteral { parts, .. } => {
+            for part in parts {
+                if let crate::ast::TemplatePart::Expression { expression, .. } = part {
+                    collect_free_names_from_expr(expression, bound, free)?;
+                }
+            }
+        }
         Expression::ArrayLiteral { elements, .. }
         | Expression::SetLiteral { elements, .. }
         | Expression::BagLiteral { elements, .. } => {

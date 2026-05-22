@@ -537,17 +537,24 @@ impl Optimizer<'_> {
             }
             Expression::RegexLiteral {
                 pattern,
+                parts,
                 flags,
                 cache_key,
                 ..
             } => {
-                if self.options.enables(OptimizationPass::RegexCache) {
+                for part in parts.iter_mut() {
+                    if let TemplatePart::Expression { expression, .. } = part {
+                        self.optimize_expression(expression);
+                    }
+                }
+                if parts.is_empty() && self.options.enables(OptimizationPass::RegexCache) {
                     *cache_key = Some(regex_cache_key(pattern, flags));
                 }
             }
             Expression::Identifier { .. }
             | Expression::NumberLiteral { .. }
             | Expression::StringLiteral { .. }
+            | Expression::BinaryStringLiteral { .. }
             | Expression::BooleanLiteral { .. }
             | Expression::NullLiteral { .. } => {}
         }
@@ -1614,7 +1621,7 @@ fn collect_expression_identifiers(expression: &Expression, names: &mut HashSet<S
                 collect_expression_identifiers(&entry.value, names);
             }
         }
-        Expression::TemplateLiteral { parts, .. } => {
+        Expression::TemplateLiteral { parts, .. } | Expression::RegexLiteral { parts, .. } => {
             for part in parts {
                 if let TemplatePart::Expression { expression, .. } = part {
                     collect_expression_identifiers(expression, names);
@@ -1628,7 +1635,7 @@ fn collect_expression_identifiers(expression: &Expression, names: &mut HashSet<S
         }
         Expression::NumberLiteral { .. }
         | Expression::StringLiteral { .. }
-        | Expression::RegexLiteral { .. }
+        | Expression::BinaryStringLiteral { .. }
         | Expression::BooleanLiteral { .. }
         | Expression::NullLiteral { .. } => {}
     }
@@ -1748,17 +1755,21 @@ fn expression_declares_binding(expr: &Expression) -> bool {
                 dict_key_declares_binding(&entry.key) || expression_declares_binding(&entry.value)
             })
         }
-        Expression::TemplateLiteral { parts, .. } => parts.iter().any(|part| match part {
-            TemplatePart::Expression { expression, .. } => expression_declares_binding(expression),
-            TemplatePart::Text { .. } => false,
-        }),
+        Expression::TemplateLiteral { parts, .. } | Expression::RegexLiteral { parts, .. } => {
+            parts.iter().any(|part| match part {
+                TemplatePart::Expression { expression, .. } => {
+                    expression_declares_binding(expression)
+                }
+                TemplatePart::Text { .. } => false,
+            })
+        }
         Expression::SuperCall { arguments, .. } => {
             arguments.iter().any(call_argument_declares_binding)
         }
         Expression::Identifier { .. }
         | Expression::NumberLiteral { .. }
         | Expression::StringLiteral { .. }
-        | Expression::RegexLiteral { .. }
+        | Expression::BinaryStringLiteral { .. }
         | Expression::BooleanLiteral { .. }
         | Expression::NullLiteral { .. } => false,
     }
@@ -2596,7 +2607,7 @@ fn propagate_constants_expression(
                 propagate_constants_expression(&mut entry.value, scopes, false);
             }
         }
-        Expression::TemplateLiteral { parts, .. } => {
+        Expression::TemplateLiteral { parts, .. } | Expression::RegexLiteral { parts, .. } => {
             for part in parts {
                 if let TemplatePart::Expression { expression, .. } = part {
                     propagate_constants_expression(expression, scopes, false);
@@ -2611,7 +2622,7 @@ fn propagate_constants_expression(
         Expression::Identifier { .. }
         | Expression::NumberLiteral { .. }
         | Expression::StringLiteral { .. }
-        | Expression::RegexLiteral { .. }
+        | Expression::BinaryStringLiteral { .. }
         | Expression::BooleanLiteral { .. }
         | Expression::NullLiteral { .. } => {}
     }
@@ -2862,7 +2873,7 @@ fn forget_assigned_in_expression(scopes: &mut [HashMap<String, Expression>], exp
                 forget_assigned_in_expression(scopes, &entry.value);
             }
         }
-        Expression::TemplateLiteral { parts, .. } => {
+        Expression::TemplateLiteral { parts, .. } | Expression::RegexLiteral { parts, .. } => {
             for part in parts {
                 if let TemplatePart::Expression { expression, .. } = part {
                     forget_assigned_in_expression(scopes, expression);
@@ -2879,7 +2890,7 @@ fn forget_assigned_in_expression(scopes: &mut [HashMap<String, Expression>], exp
         | Expression::Identifier { .. }
         | Expression::NumberLiteral { .. }
         | Expression::StringLiteral { .. }
-        | Expression::RegexLiteral { .. }
+        | Expression::BinaryStringLiteral { .. }
         | Expression::BooleanLiteral { .. }
         | Expression::NullLiteral { .. } => {}
     }
@@ -3295,7 +3306,7 @@ fn annotate_expression(expr: &mut Expression, scopes: &mut Vec<HashSet<String>>)
                 annotate_expression(&mut entry.value, scopes);
             }
         }
-        Expression::TemplateLiteral { parts, .. } => {
+        Expression::TemplateLiteral { parts, .. } | Expression::RegexLiteral { parts, .. } => {
             for part in parts {
                 if let TemplatePart::Expression { expression, .. } = part {
                     annotate_expression(expression, scopes);
@@ -3309,7 +3320,7 @@ fn annotate_expression(expr: &mut Expression, scopes: &mut Vec<HashSet<String>>)
         }
         Expression::NumberLiteral { .. }
         | Expression::StringLiteral { .. }
-        | Expression::RegexLiteral { .. }
+        | Expression::BinaryStringLiteral { .. }
         | Expression::BooleanLiteral { .. }
         | Expression::NullLiteral { .. } => {}
     }

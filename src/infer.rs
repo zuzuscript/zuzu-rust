@@ -318,7 +318,15 @@ fn this_infer_expression(inferencer: &mut Inferencer, expression: &mut Expressio
         Expression::Identifier { name, .. } => inferencer.lookup(name),
         Expression::NumberLiteral { .. } => Some("Number".to_owned()),
         Expression::StringLiteral { .. } => Some("String".to_owned()),
-        Expression::RegexLiteral { .. } => Some("Regexp".to_owned()),
+        Expression::BinaryStringLiteral { .. } => Some("BinaryString".to_owned()),
+        Expression::RegexLiteral { parts, .. } => {
+            for part in parts {
+                if let TemplatePart::Expression { expression, .. } = part {
+                    this_infer_expression(inferencer, expression);
+                }
+            }
+            Some("Regexp".to_owned())
+        }
         Expression::BooleanLiteral { .. } => Some("Boolean".to_owned()),
         Expression::NullLiteral { .. } => Some("Null".to_owned()),
         Expression::ArrayLiteral { elements, .. } => {

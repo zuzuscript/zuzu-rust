@@ -333,10 +333,17 @@ pub enum Expression {
         value: String,
         inferred_type: Option<String>,
     },
+    BinaryStringLiteral {
+        line: usize,
+        source_file: Option<String>,
+        bytes: Vec<u8>,
+        inferred_type: Option<String>,
+    },
     RegexLiteral {
         line: usize,
         source_file: Option<String>,
         pattern: String,
+        parts: Vec<TemplatePart>,
         flags: String,
         cache_key: Option<String>,
         inferred_type: Option<String>,
@@ -1366,6 +1373,7 @@ impl Expression {
             Expression::Identifier { line, .. } => *line,
             Expression::NumberLiteral { line, .. } => *line,
             Expression::StringLiteral { line, .. } => *line,
+            Expression::BinaryStringLiteral { line, .. } => *line,
             Expression::RegexLiteral { line, .. } => *line,
             Expression::BooleanLiteral { line, .. } => *line,
             Expression::NullLiteral { line, .. } => *line,
@@ -1403,6 +1411,7 @@ impl Expression {
             Expression::Identifier { source_file, .. }
             | Expression::NumberLiteral { source_file, .. }
             | Expression::StringLiteral { source_file, .. }
+            | Expression::BinaryStringLiteral { source_file, .. }
             | Expression::RegexLiteral { source_file, .. }
             | Expression::BooleanLiteral { source_file, .. }
             | Expression::NullLiteral { source_file, .. }
@@ -1440,6 +1449,7 @@ impl Expression {
             Expression::Identifier { inferred_type, .. }
             | Expression::NumberLiteral { inferred_type, .. }
             | Expression::StringLiteral { inferred_type, .. }
+            | Expression::BinaryStringLiteral { inferred_type, .. }
             | Expression::RegexLiteral { inferred_type, .. }
             | Expression::BooleanLiteral { inferred_type, .. }
             | Expression::NullLiteral { inferred_type, .. }
@@ -1477,6 +1487,7 @@ impl Expression {
             Expression::Identifier { inferred_type, .. }
             | Expression::NumberLiteral { inferred_type, .. }
             | Expression::StringLiteral { inferred_type, .. }
+            | Expression::BinaryStringLiteral { inferred_type, .. }
             | Expression::RegexLiteral { inferred_type, .. }
             | Expression::BooleanLiteral { inferred_type, .. }
             | Expression::NullLiteral { inferred_type, .. }
@@ -1586,9 +1597,18 @@ impl Expression {
                 write_string_field(out, indent + 1, "value", value, false);
                 write_object_end(out, indent);
             }
+            Expression::BinaryStringLiteral { line, bytes, .. } => {
+                write_object_start(out);
+                write_string_field(out, indent + 1, "type", "BinaryStringLiteral", true);
+                write_number_field(out, indent + 1, "line", *line, true);
+                write_optional_string_field(out, indent + 1, "inferred_type", inferred_type, true);
+                write_string_field(out, indent + 1, "bytes_hex", &bytes_to_hex(bytes), false);
+                write_object_end(out, indent);
+            }
             Expression::RegexLiteral {
                 line,
                 pattern,
+                parts,
                 flags,
                 cache_key,
                 ..
@@ -1599,6 +1619,11 @@ impl Expression {
                 write_optional_string_field(out, indent + 1, "inferred_type", inferred_type, true);
                 write_string_field(out, indent + 1, "pattern", pattern, true);
                 write_string_field(out, indent + 1, "flags", flags, true);
+                write_field_name(out, indent + 1, "parts");
+                write_array(out, indent + 1, parts, |out, indent, part| {
+                    part.write_json(out, indent)
+                });
+                out.push_str(",\n");
                 write_optional_string_field(
                     out,
                     indent + 1,
@@ -2519,6 +2544,16 @@ fn write_json_string(out: &mut String, value: &str) {
         }
     }
     out.push('"');
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
 }
 
 fn write_object_start(out: &mut String) {

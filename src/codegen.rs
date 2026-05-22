@@ -592,10 +592,13 @@ fn render_expr(expression: &Expression, parent_prec: u8) -> String {
         Expression::Identifier { name, .. } => (name.clone(), PREC_ATOM),
         Expression::NumberLiteral { value, .. } => (value.clone(), PREC_ATOM),
         Expression::StringLiteral { value, .. } => (quote_string(value), PREC_ATOM),
-        Expression::RegexLiteral { pattern, flags, .. } => (
-            format!("/{}/{}", quote_regex_pattern(pattern), flags),
-            PREC_ATOM,
-        ),
+        Expression::BinaryStringLiteral { bytes, .. } => (quote_binary_string(bytes), PREC_ATOM),
+        Expression::RegexLiteral {
+            pattern,
+            parts,
+            flags,
+            ..
+        } => (render_regex_literal(pattern, parts, flags), PREC_ATOM),
         Expression::BooleanLiteral { value, .. } => {
             (if *value { "true" } else { "false" }.to_owned(), PREC_ATOM)
         }
@@ -958,6 +961,27 @@ fn render_template_literal(parts: &[TemplatePart]) -> String {
     out
 }
 
+fn render_regex_literal(pattern: &str, parts: &[TemplatePart], flags: &str) -> String {
+    if parts.is_empty() {
+        return format!("/{}/{}", quote_regex_pattern(pattern), flags);
+    }
+
+    let mut out = String::from("/");
+    for part in parts {
+        match part {
+            TemplatePart::Text { value, .. } => out.push_str(&quote_regex_pattern(value)),
+            TemplatePart::Expression { expression, .. } => {
+                out.push_str("${ ");
+                out.push_str(&render_expression(expression));
+                out.push_str(" }");
+            }
+        }
+    }
+    out.push('/');
+    out.push_str(flags);
+    out
+}
+
 fn infix_precedence(operator: &str) -> u8 {
     match operator {
         "or" | "⋁" => PREC_OR,
@@ -1009,6 +1033,27 @@ fn quote_string(value: &str) -> String {
         .replace('\r', "\\r")
         .replace('\t', "\\t");
     format!("\"{escaped}\"")
+}
+
+fn quote_binary_string(bytes: &[u8]) -> String {
+    let mut out = String::from("'");
+    for byte in bytes {
+        match *byte {
+            b'\n' => out.push_str("\\n"),
+            b'\r' => out.push_str("\\r"),
+            b'\t' => out.push_str("\\t"),
+            b'\\' => out.push_str("\\\\"),
+            b'\'' => out.push_str("\\'"),
+            b'"' => out.push_str("\\\""),
+            b'`' => out.push_str("\\`"),
+            b'/' => out.push_str("\\/"),
+            b'$' => out.push_str("\\$"),
+            0x20..=0x7e => out.push(*byte as char),
+            _ => out.push_str(&format!("\\x{byte:02X}")),
+        }
+    }
+    out.push('\'');
+    out
 }
 
 fn quote_regex_pattern(pattern: &str) -> String {

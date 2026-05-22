@@ -90,9 +90,8 @@ const KEYWORDS: &[&str] = &[
 
 const TWO_CHAR_OPERATORS: &[&str] = &[
     ":=", "+=", "-=", "*=", "/=", "_=", "~=", "**", "==", "!=", "<=", ">=", "++", "--", "->", "@?",
-    "@@", "?:", "|>", "<|", "×=", "÷=", "≤", "≥", "≠", "≡", "≢", "≶", "≷", "⋀", "⋁", "⊻",
-    "⊼", "∈", "∉", "⋃", "⋂", "∖", "¬", "√", "⊂", "⊃", ">>", "<<", "⌊", "⌋", "⌈", "⌉",
-    "«", "»", "→",
+    "@@", "?:", "|>", "<|", "×=", "÷=", "≤", "≥", "≠", "≡", "≢", "≶", "≷", "⋀", "⋁", "⊻", "⊼", "∈",
+    "∉", "⋃", "⋂", "∖", "¬", "√", "⊂", "⊃", ">>", "<<", "⌊", "⌋", "⌈", "⌉", "«", "»", "→",
 ];
 
 const THREE_CHAR_OPERATORS: &[&str] = &["**=", "?:=", "<=>", ".(", "⊂⊃", "<<<", ">>>", "..."];
@@ -171,9 +170,14 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
         let start_column = column;
 
         if ch == '/' && can_start_regex(&tokens) {
-            let (pattern, flags, end, new_line, new_column) = lex_regex(&chars, i, line, column)?;
+            let (pattern, parts, flags, end, new_line, new_column) =
+                lex_regex(&chars, i, line, column)?;
             tokens.push(Token::new(
-                TokenKind::Regex { pattern, flags },
+                TokenKind::Regex {
+                    pattern,
+                    parts,
+                    flags,
+                },
                 Span::new(start, end, start_line, start_column),
             ));
             i = end;
@@ -252,9 +256,13 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
             }
             '\'' => {
                 let (value, end, new_line, new_column) =
-                    lex_single_quoted_string(&chars, i, line, column)?;
+                    if i + 2 < chars.len() && chars[i + 1] == '\'' && chars[i + 2] == '\'' {
+                        lex_triple_single_quoted_binary(&chars, i, line, column)?
+                    } else {
+                        lex_single_quoted_binary(&chars, i, line, column)?
+                    };
                 tokens.push(Token::new(
-                    TokenKind::String(value),
+                    TokenKind::BinaryString(value),
                     Span::new(start, end, start_line, start_column),
                 ));
                 i = end;
@@ -349,6 +357,173 @@ fn matches_text(chars: &[char], index: usize, text: &str) -> bool {
     chars[index..index + len].iter().copied().eq(text.chars())
 }
 
+fn hex_value(ch: char) -> Option<u32> {
+    match ch {
+        '0'..='9' => Some(ch as u32 - '0' as u32),
+        'a'..='f' => Some(ch as u32 - 'a' as u32 + 10),
+        'A'..='F' => Some(ch as u32 - 'A' as u32 + 10),
+        _ => None,
+    }
+}
+
+fn read_hex_escape(
+    chars: &[char],
+    index: usize,
+    digits: usize,
+    line: usize,
+    column: usize,
+    name: &str,
+) -> Result<u32> {
+    if index + digits > chars.len() {
+        return Err(ZuzuRustError::lex(
+            format!("invalid {name} escape"),
+            line,
+            column,
+        ));
+    }
+    let mut value = 0u32;
+    for offset in 0..digits {
+        let Some(digit) = hex_value(chars[index + offset]) else {
+            return Err(ZuzuRustError::lex(
+                format!("invalid {name} escape"),
+                line,
+                column,
+            ));
+        };
+        value = value * 16 + digit;
+    }
+    Ok(value)
+}
+
+fn decode_text_escape(
+    chars: &[char],
+    index: &mut usize,
+    column: &mut usize,
+    line: usize,
+    allow_unicode: bool,
+    literal_name: &str,
+) -> Result<char> {
+    if *index >= chars.len() {
+        return Err(ZuzuRustError::lex(
+            format!("unterminated {literal_name} escape"),
+            line,
+            *column,
+        ));
+    }
+    let escape_line = line;
+    let escape_column = *column;
+    let ch = chars[*index];
+    let value = match ch {
+        'n' => {
+            *index += 1;
+            *column += 1;
+            '\n'
+        }
+        'r' => {
+            *index += 1;
+            *column += 1;
+            '\r'
+        }
+        't' => {
+            *index += 1;
+            *column += 1;
+            '\t'
+        }
+        '\\' | '\'' | '"' | '`' | '/' | '$' => {
+            *index += 1;
+            *column += 1;
+            ch
+        }
+        'x' => {
+            let code = read_hex_escape(chars, *index + 1, 2, escape_line, escape_column, "\\x")?;
+            *index += 3;
+            *column += 3;
+            char::from_u32(code).expect("\\xHH is always a valid Unicode scalar")
+        }
+        'u' if allow_unicode => {
+            let code = read_hex_escape(chars, *index + 1, 4, escape_line, escape_column, "\\u")?;
+            let Some(ch) = char::from_u32(code) else {
+                return Err(ZuzuRustError::lex(
+                    "invalid Unicode escape",
+                    escape_line,
+                    escape_column,
+                ));
+            };
+            *index += 5;
+            *column += 5;
+            ch
+        }
+        'u' => {
+            return Err(ZuzuRustError::lex(
+                "Unicode escapes are not supported in binary strings",
+                escape_line,
+                escape_column,
+            ))
+        }
+        _ => {
+            return Err(ZuzuRustError::lex(
+                format!("invalid {literal_name} escape"),
+                escape_line,
+                escape_column,
+            ))
+        }
+    };
+    Ok(value)
+}
+
+fn decode_binary_escape(
+    chars: &[char],
+    index: &mut usize,
+    column: &mut usize,
+    line: usize,
+) -> Result<Vec<u8>> {
+    if *index >= chars.len() {
+        return Err(ZuzuRustError::lex(
+            "unterminated binary string escape",
+            line,
+            *column,
+        ));
+    }
+    let escape_line = line;
+    let escape_column = *column;
+    let ch = chars[*index];
+    let byte = match ch {
+        'n' => Some(b'\n'),
+        'r' => Some(b'\r'),
+        't' => Some(b'\t'),
+        '\\' => Some(b'\\'),
+        '\'' => Some(b'\''),
+        '"' => Some(b'"'),
+        '`' => Some(b'`'),
+        '/' => Some(b'/'),
+        '$' => Some(b'$'),
+        'x' => {
+            let value = read_hex_escape(chars, *index + 1, 2, escape_line, escape_column, "\\x")?;
+            *index += 3;
+            *column += 3;
+            return Ok(vec![value as u8]);
+        }
+        'u' => {
+            return Err(ZuzuRustError::lex(
+                "Unicode escapes are not supported in binary strings",
+                escape_line,
+                escape_column,
+            ));
+        }
+        _ => None,
+    };
+    let Some(byte) = byte else {
+        return Err(ZuzuRustError::lex(
+            "invalid binary string escape",
+            escape_line,
+            escape_column,
+        ));
+    };
+    *index += 1;
+    *column += 1;
+    Ok(vec![byte])
+}
+
 fn lex_string(
     chars: &[char],
     start: usize,
@@ -357,7 +532,7 @@ fn lex_string(
 ) -> Result<(String, usize, usize, usize)> {
     let mut value = String::new();
     let mut i = start + 1;
-    let mut current_line = line;
+    let current_line = line;
     let mut current_column = column + 1;
 
     while i < chars.len() {
@@ -369,26 +544,22 @@ fn lex_string(
             '\\' => {
                 i += 1;
                 current_column += 1;
-                if i >= chars.len() {
-                    break;
-                }
-                let escaped = match chars[i] {
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    '"' => '"',
-                    '\\' => '\\',
-                    other => other,
-                };
+                let escaped = decode_text_escape(
+                    chars,
+                    &mut i,
+                    &mut current_column,
+                    current_line,
+                    true,
+                    "string",
+                )?;
                 value.push(escaped);
-                i += 1;
-                current_column += 1;
             }
             '\n' => {
-                value.push('\n');
-                i += 1;
-                current_line += 1;
-                current_column = 1;
+                return Err(ZuzuRustError::lex(
+                    "unterminated string literal",
+                    current_line,
+                    current_column,
+                ));
             }
             _ => {
                 value.push(ch);
@@ -405,15 +576,15 @@ fn lex_string(
     ))
 }
 
-fn lex_single_quoted_string(
+fn lex_single_quoted_binary(
     chars: &[char],
     start: usize,
     line: usize,
     column: usize,
-) -> Result<(String, usize, usize, usize)> {
-    let mut value = String::new();
+) -> Result<(Vec<u8>, usize, usize, usize)> {
+    let mut value = Vec::new();
     let mut i = start + 1;
-    let mut current_line = line;
+    let current_line = line;
     let mut current_column = column + 1;
 
     while i < chars.len() {
@@ -423,21 +594,23 @@ fn lex_single_quoted_string(
             '\\' => {
                 i += 1;
                 current_column += 1;
-                if i >= chars.len() {
-                    break;
-                }
-                value.push(chars[i]);
-                i += 1;
-                current_column += 1;
+                value.extend(decode_binary_escape(
+                    chars,
+                    &mut i,
+                    &mut current_column,
+                    current_line,
+                )?);
             }
             '\n' => {
-                value.push('\n');
-                i += 1;
-                current_line += 1;
-                current_column = 1;
+                return Err(ZuzuRustError::lex(
+                    "unterminated binary string literal",
+                    current_line,
+                    current_column,
+                ));
             }
             _ => {
-                value.push(ch);
+                let mut buf = [0u8; 4];
+                value.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
                 i += 1;
                 current_column += 1;
             }
@@ -445,7 +618,41 @@ fn lex_single_quoted_string(
     }
 
     Err(ZuzuRustError::lex(
-        "unterminated string literal",
+        "unterminated binary string literal",
+        line,
+        column,
+    ))
+}
+
+fn lex_triple_single_quoted_binary(
+    chars: &[char],
+    start: usize,
+    line: usize,
+    column: usize,
+) -> Result<(Vec<u8>, usize, usize, usize)> {
+    let mut value = Vec::new();
+    let mut i = start + 3;
+    let mut current_line = line;
+    let mut current_column = column + 3;
+
+    while i < chars.len() {
+        if i + 2 < chars.len() && chars[i] == '\'' && chars[i + 1] == '\'' && chars[i + 2] == '\'' {
+            return Ok((value, i + 3, current_line, current_column + 3));
+        }
+        let ch = chars[i];
+        let mut buf = [0u8; 4];
+        value.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+        i += 1;
+        if ch == '\n' {
+            current_line += 1;
+            current_column = 1;
+        } else {
+            current_column += 1;
+        }
+    }
+
+    Err(ZuzuRustError::lex(
+        "unterminated triple-quoted binary string literal",
         line,
         column,
     ))
@@ -515,21 +722,15 @@ fn lex_template(
         if ch == '\\' {
             i += 1;
             current_column += 1;
-            if i >= chars.len() {
-                break;
-            }
-            let escaped = match chars[i] {
-                'n' => '\n',
-                'r' => '\r',
-                't' => '\t',
-                '`' => '`',
-                '"' => '"',
-                '\\' => '\\',
-                other => other,
-            };
+            let escaped = decode_text_escape(
+                chars,
+                &mut i,
+                &mut current_column,
+                current_line,
+                true,
+                "template literal",
+            )?;
             text_part.push(escaped);
-            i += 1;
-            current_column += 1;
             continue;
         }
         if ch == '$' && i + 1 < chars.len() && chars[i + 1] == '{' {
@@ -553,14 +754,11 @@ fn lex_template(
             continue;
         }
         if ch == '\n' {
-            if text_part.is_empty() {
-                text_line = current_line;
-            }
-            text_part.push('\n');
-            i += 1;
-            current_line += 1;
-            current_column = 1;
-            continue;
+            return Err(ZuzuRustError::lex(
+                "unterminated template literal",
+                current_line,
+                current_column,
+            ));
         }
         text_part.push(ch);
         i += 1;
@@ -812,6 +1010,7 @@ fn can_start_regex(tokens: &[Token]) -> bool {
         TokenKind::Identifier(_)
         | TokenKind::Number(_)
         | TokenKind::String(_)
+        | TokenKind::BinaryString(_)
         | TokenKind::Template(_)
         | TokenKind::Eof => false,
     }
@@ -822,30 +1021,63 @@ fn lex_regex(
     start: usize,
     line: usize,
     column: usize,
-) -> Result<(String, String, usize, usize, usize)> {
+) -> Result<(String, Vec<TemplatePart>, String, usize, usize, usize)> {
     let mut value = String::new();
+    let mut parts = Vec::new();
+    let mut text_part = String::new();
+    let mut text_line = line;
     let mut i = start + 1;
     let mut current_line = line;
     let mut current_column = column + 1;
     let mut in_class = false;
+    let mut saw_interpolation = false;
 
     while i < chars.len() {
         let ch = chars[i];
         if ch == '\\' {
             value.push(ch);
+            text_part.push(ch);
             i += 1;
             current_column += 1;
             if i >= chars.len() {
                 break;
             }
-            value.push(chars[i]);
-            if chars[i] == '\n' {
+            let escaped = chars[i];
+            value.push(escaped);
+            text_part.push(escaped);
+            if escaped == '\n' {
                 current_line += 1;
                 current_column = 1;
             } else {
                 current_column += 1;
             }
             i += 1;
+            continue;
+        }
+        if ch == '$' && i + 1 < chars.len() && chars[i + 1] == '{' {
+            if !text_part.is_empty() {
+                parts.push(TemplatePart::Text {
+                    line: text_line,
+                    value: std::mem::take(&mut text_part),
+                });
+            }
+            let expr_line = current_line;
+            let (expr, end, new_line, new_column) =
+                lex_template_interpolation(chars, i + 2, current_line, current_column + 2)?;
+            parts.push(TemplatePart::Expr {
+                line: expr_line,
+                source: expr,
+            });
+            saw_interpolation = true;
+            value.push('$');
+            value.push('{');
+            let expr_source: String = chars[i + 2..end - 1].iter().collect();
+            value.push_str(&expr_source);
+            value.push('}');
+            i = end;
+            current_line = new_line;
+            current_column = new_column;
+            text_line = current_line;
             continue;
         }
         if ch == '[' {
@@ -861,9 +1093,19 @@ fn lex_regex(
                 current_column += 1;
             }
             let flags: String = chars[flags_start..i].iter().collect();
-            return Ok((value, flags, i, current_line, current_column));
+            if saw_interpolation && !text_part.is_empty() {
+                parts.push(TemplatePart::Text {
+                    line: text_line,
+                    value: text_part,
+                });
+            }
+            return Ok((value, parts, flags, i, current_line, current_column));
         }
         value.push(ch);
+        if text_part.is_empty() {
+            text_line = current_line;
+        }
+        text_part.push(ch);
         if ch == '\n' {
             current_line += 1;
             current_column = 1;
