@@ -49,6 +49,11 @@ pub(super) fn call_object_method(
             let source = args.first().cloned().unwrap_or(Value::Null);
             encode_yaml(&normalize_value(&source), pretty).map(Value::String)
         }
+        "encode_binarystring" => {
+            let source = args.first().cloned().unwrap_or(Value::Null);
+            encode_yaml(&normalize_value(&source), pretty)
+                .map(|text| Value::BinaryString(text.into_bytes()))
+        }
         "decode" => match args.first() {
             Some(value) => match runtime.render_value(value) {
                 Ok(text) => decode_yaml(&text),
@@ -56,6 +61,8 @@ pub(super) fn call_object_method(
             },
             None => decode_yaml(""),
         },
+        "decode_binarystring" => binarystring_to_text(args.first(), "YAML.decode_binarystring")
+            .and_then(|text| decode_yaml(&text)),
         "dump" => dump_yaml(runtime, args, pretty),
         "load" => load_yaml(runtime, args),
         _ => return None,
@@ -105,7 +112,8 @@ fn dump_yaml(runtime: &Runtime, args: &[Value], pretty: bool) -> Result<Value> {
         &normalize_value(&args.get(1).cloned().unwrap_or(Value::Null)),
         pretty,
     )?;
-    fs::write(path, payload).map_err(|err| ZuzuRustError::thrown(format!("dump failed: {err}")))?;
+    fs::write(path, payload.into_bytes())
+        .map_err(|err| ZuzuRustError::thrown(format!("dump failed: {err}")))?;
     Ok(target.clone())
 }
 
@@ -116,9 +124,26 @@ fn load_yaml(runtime: &Runtime, args: &[Value]) -> Result<Value> {
         ));
     };
     let path = extract_path(runtime, target, "YAML.load")?;
-    let text = fs::read_to_string(path)
-        .map_err(|err| ZuzuRustError::thrown(format!("load failed: {err}")))?;
+    let bytes =
+        fs::read(path).map_err(|err| ZuzuRustError::thrown(format!("load failed: {err}")))?;
+    let text = String::from_utf8(bytes)
+        .map_err(|err| ZuzuRustError::thrown(format!("load failed: invalid UTF-8: {err}")))?;
     decode_yaml(&text)
+}
+
+fn binarystring_to_text(value: Option<&Value>, method_name: &str) -> Result<String> {
+    match value {
+        Some(Value::BinaryString(bytes)) => String::from_utf8(bytes.clone()).map_err(|err| {
+            ZuzuRustError::thrown(format!("{method_name} failed: invalid UTF-8: {err}"))
+        }),
+        Some(other) => Err(ZuzuRustError::thrown(format!(
+            "TypeException: {method_name} expects BinaryString, got {}",
+            other.type_name()
+        ))),
+        None => Err(ZuzuRustError::thrown(format!(
+            "TypeException: {method_name} expects BinaryString, got Null"
+        ))),
+    }
 }
 
 fn extract_path(runtime: &Runtime, value: &Value, method_name: &str) -> Result<std::path::PathBuf> {

@@ -6997,12 +6997,7 @@ impl Runtime {
                     let (from, to) = self.string_slice_range(&text, &start_value, &count_value)?;
                     env.assign(
                         name,
-                        Value::String(replace_char_range(
-                            &text,
-                            from,
-                            to,
-                            replacement.chars(),
-                        )),
+                        Value::String(replace_char_range(&text, from, to, replacement.chars())),
                     )?;
                     Ok(Value::String(replacement))
                 }

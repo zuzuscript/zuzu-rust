@@ -102,6 +102,12 @@ pub(super) fn call_object_method(
                 &source, pretty, canonical, 0,
             )))
         }
+        "encode_binarystring" => {
+            let source = args.first().cloned().unwrap_or(Value::Null);
+            Ok(Value::BinaryString(
+                encode_json_value(&source, pretty, canonical, 0).into_bytes(),
+            ))
+        }
         "decode" => match args.first() {
             Some(value) => match runtime.render_value(value) {
                 Ok(text) => parse_json_text(&text, pairlists),
@@ -109,6 +115,8 @@ pub(super) fn call_object_method(
             },
             None => parse_json_text("", pairlists),
         },
+        "decode_binarystring" => binarystring_to_text(args.first(), "JSON.decode_binarystring")
+            .and_then(|text| parse_json_text(&text, pairlists)),
         "load" => {
             let Some(target) = args.first() else {
                 return Some(Err(ZuzuRustError::thrown(
@@ -116,8 +124,13 @@ pub(super) fn call_object_method(
                 )));
             };
             match extract_path(runtime, target, "JSON.load") {
-                Ok(path) => match fs::read_to_string(path) {
-                    Ok(text) => parse_json_text(&text, pairlists),
+                Ok(path) => match fs::read(path) {
+                    Ok(bytes) => match String::from_utf8(bytes) {
+                        Ok(text) => parse_json_text(&text, pairlists),
+                        Err(err) => Err(ZuzuRustError::thrown(format!(
+                            "load failed: invalid UTF-8: {err}"
+                        ))),
+                    },
                     Err(err) => Err(ZuzuRustError::thrown(format!("load failed: {err}"))),
                 },
                 Err(err) => Err(err),
@@ -148,6 +161,21 @@ pub(super) fn call_object_method(
         _ => return None,
     };
     Some(value)
+}
+
+fn binarystring_to_text(value: Option<&Value>, method_name: &str) -> Result<String> {
+    match value {
+        Some(Value::BinaryString(bytes)) => String::from_utf8(bytes.clone()).map_err(|err| {
+            ZuzuRustError::thrown(format!("{method_name} failed: invalid UTF-8: {err}"))
+        }),
+        Some(other) => Err(ZuzuRustError::thrown(format!(
+            "TypeException: {method_name} expects BinaryString, got {}",
+            other.type_name()
+        ))),
+        None => Err(ZuzuRustError::thrown(format!(
+            "TypeException: {method_name} expects BinaryString, got Null"
+        ))),
+    }
 }
 
 fn extract_path(runtime: &Runtime, value: &Value, method_name: &str) -> Result<std::path::PathBuf> {
@@ -317,6 +345,39 @@ impl<'a> JsonParser<'a> {
                             let value = u16::from_str_radix(&hex, 16).map_err(|_| {
                                 ZuzuRustError::thrown("decode failed: bad unicode escape")
                             })?;
+                            if (0xD800..=0xDBFF).contains(&value) {
+                                let saved_index = self.index;
+                                if self.bump() != Some('\\') || self.bump() != Some('u') {
+                                    return Err(ZuzuRustError::thrown(
+                                        "decode failed: bad unicode surrogate pair",
+                                    ));
+                                }
+                                let low_hex = self.take_n(4)?;
+                                let low = u16::from_str_radix(&low_hex, 16).map_err(|_| {
+                                    ZuzuRustError::thrown("decode failed: bad unicode escape")
+                                })?;
+                                if !(0xDC00..=0xDFFF).contains(&low) {
+                                    self.index = saved_index;
+                                    return Err(ZuzuRustError::thrown(
+                                        "decode failed: bad unicode surrogate pair",
+                                    ));
+                                }
+                                let high_ten = (value as u32) - 0xD800;
+                                let low_ten = (low as u32) - 0xDC00;
+                                let codepoint = 0x10000 + ((high_ten << 10) | low_ten);
+                                let Some(chr) = char::from_u32(codepoint) else {
+                                    return Err(ZuzuRustError::thrown(
+                                        "decode failed: bad unicode scalar",
+                                    ));
+                                };
+                                out.push(chr);
+                                continue;
+                            }
+                            if (0xDC00..=0xDFFF).contains(&value) {
+                                return Err(ZuzuRustError::thrown(
+                                    "decode failed: bad unicode surrogate pair",
+                                ));
+                            }
                             let Some(chr) = char::from_u32(value as u32) else {
                                 return Err(ZuzuRustError::thrown(
                                     "decode failed: bad unicode scalar",

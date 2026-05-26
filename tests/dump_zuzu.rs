@@ -81,11 +81,7 @@ fn dump_zuzu_renders_declaration_unpacking_patterns() {
 #[test]
 fn dump_zuzu_renders_primary_chain_operator_spellings() {
     let output = run_zuzu(
-        &[
-            "--dump-zuzu",
-            "-e",
-            "say(4 |> ^^ + 1); say((^^ + 1) <| 4);",
-        ],
+        &["--dump-zuzu", "-e", "say(4 |> ^^ + 1); say((^^ + 1) <| 4);"],
         &repo_root(),
     );
 

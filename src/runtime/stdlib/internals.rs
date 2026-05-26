@@ -27,6 +27,7 @@ pub(super) fn exports() -> HashMap<String, Value> {
         ("to_Number", "std/internals.to_Number"),
         ("to_Boolean", "std/internals.to_Boolean"),
         ("to_Regexp", "std/internals.to_Regexp"),
+        ("to_Regexp_with_flags", "std/internals.to_Regexp_with_flags"),
     ] {
         exports.insert(
             export_name.to_owned(),
@@ -233,6 +234,15 @@ pub(super) fn call(
                 Ok(Value::Regex(pattern, String::new()))
             }
         }),
+        "std/internals.to_Regexp_with_flags" => require_arity(name, args, 2).and_then(|_| {
+            let pattern = match &args[0] {
+                Value::Regex(pattern, _) => pattern.clone(),
+                value => runtime.value_to_operator_string(value)?,
+            };
+            let flags = runtime.value_to_operator_string(&args[1])?;
+            runtime.compile_regex(&pattern, &flags)?;
+            Ok(Value::Regex(pattern, flags))
+        }),
         _ => unreachable!(),
     };
     Some(value)
@@ -283,5 +293,6 @@ fn is_internal_function(name: &str) -> bool {
             | "std/internals.to_Number"
             | "std/internals.to_Boolean"
             | "std/internals.to_Regexp"
+            | "std/internals.to_Regexp_with_flags"
     )
 }

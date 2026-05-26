@@ -67,9 +67,21 @@ fn call_csv_method(
             let text = expect_string_like(args.first(), "CSV.decode")?;
             decode_text(&config, &text, false)
         }
+        "decode_binarystring" => {
+            let text = expect_binary_text(args.first(), "CSV.decode_binarystring")?;
+            decode_text(&config, &text, false)
+        }
         "decode_report" => {
             let text = expect_string_like(args.first(), "CSV.decode_report")?;
             decode_text(&config, &text, true)
+        }
+        "decode_report_binarystring" => {
+            let text = expect_binary_text(args.first(), "CSV.decode_report_binarystring")?;
+            decode_text(&config, &text, true)
+        }
+        "encode_binarystring" => {
+            let rows = args.first().cloned().unwrap_or(Value::Array(Vec::new()));
+            encode_rows(&config, &rows).map(|text| Value::BinaryString(text.into_bytes()))
         }
         "encode_row" => {
             let row = args.first().cloned().unwrap_or(Value::Array(Vec::new()));
@@ -78,16 +90,20 @@ fn call_csv_method(
                 &row_to_values(&config, &row)?,
             )))
         }
+        "encode_row_binarystring" => {
+            let row = args.first().cloned().unwrap_or(Value::Array(Vec::new()));
+            Ok(Value::BinaryString(
+                encode_row_text(&config, &row_to_values(&config, &row)?).into_bytes(),
+            ))
+        }
         "load" => {
             let path = expect_path(runtime, args.first(), "CSV.load")?;
-            let text = fs::read_to_string(path)
-                .map_err(|err| ZuzuRustError::thrown(format!("load failed: {err}")))?;
+            let text = read_utf8_file(path, "load")?;
             decode_text(&config, &text, false)
         }
         "load_report" => {
             let path = expect_path(runtime, args.first(), "CSV.load_report")?;
-            let text = fs::read_to_string(path)
-                .map_err(|err| ZuzuRustError::thrown(format!("load failed: {err}")))?;
+            let text = read_utf8_file(path, "load")?;
             decode_text(&config, &text, true)
         }
         "dump" => {
@@ -100,8 +116,7 @@ fn call_csv_method(
         }
         "open" => {
             let path = expect_path(runtime, args.first(), "CSV.open")?;
-            let text = fs::read_to_string(path)
-                .map_err(|err| ZuzuRustError::thrown(format!("open failed: {err}")))?;
+            let text = read_utf8_file(path, "open")?;
             let parsed = decode_internal(&config, &text);
             Ok(new_csv_reader(&config, parsed))
         }
@@ -120,11 +135,14 @@ fn call_csv_method(
             let text = match args.first() {
                 Some(Value::Object(object)) if object.borrow().class.name == "Path" => {
                     let path = expect_path(runtime, args.first(), "CSV.sniff")?;
-                    fs::read_to_string(path)
-                        .map_err(|err| ZuzuRustError::thrown(format!("sniff failed: {err}")))?
+                    read_utf8_file(path, "sniff")?
                 }
                 _ => expect_string_like(args.first(), "CSV.sniff")?,
             };
+            Ok(sniff_text(&text))
+        }
+        "sniff_binarystring" => {
+            let text = expect_binary_text(args.first(), "CSV.sniff_binarystring")?;
             Ok(sniff_text(&text))
         }
         "transpose" => {
@@ -175,8 +193,7 @@ fn call_csv_method(
             let dbh = args.get(1).cloned().unwrap_or(Value::Null);
             let table = args.get(2).and_then(stringify).unwrap_or_default();
             let options = args.get(3).and_then(dict_items).unwrap_or_default();
-            let text = fs::read_to_string(path)
-                .map_err(|err| ZuzuRustError::thrown(format!("load failed: {err}")))?;
+            let text = read_utf8_file(path, "load")?;
             let mut load_config = config.clone();
             load_config.apply_dict(&options);
             let rows = match decode_text(&load_config, &text, false)? {
@@ -1022,6 +1039,27 @@ fn expect_string_like(value: Option<&Value>, label: &str) -> Result<String> {
         ))),
         None => Ok(String::new()),
     }
+}
+
+fn expect_binary_text(value: Option<&Value>, label: &str) -> Result<String> {
+    match value {
+        Some(Value::BinaryString(bytes)) => String::from_utf8(bytes.clone())
+            .map_err(|err| ZuzuRustError::thrown(format!("{label} failed: invalid UTF-8: {err}"))),
+        Some(other) => Err(ZuzuRustError::thrown(format!(
+            "TypeException: {label} expects BinaryString, got {}",
+            other.type_name()
+        ))),
+        None => Err(ZuzuRustError::thrown(format!(
+            "TypeException: {label} expects BinaryString, got Null"
+        ))),
+    }
+}
+
+fn read_utf8_file(path: std::path::PathBuf, action: &str) -> Result<String> {
+    let bytes =
+        fs::read(path).map_err(|err| ZuzuRustError::thrown(format!("{action} failed: {err}")))?;
+    String::from_utf8(bytes)
+        .map_err(|err| ZuzuRustError::thrown(format!("{action} failed: invalid UTF-8: {err}")))
 }
 
 fn stringify(value: &Value) -> Option<String> {
