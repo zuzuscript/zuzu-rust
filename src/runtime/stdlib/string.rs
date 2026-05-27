@@ -29,6 +29,7 @@ pub(super) fn exports() -> HashMap<String, Value> {
         "sprint",
         "split",
         "pattern_to_regexp",
+        "quotemeta",
     ] {
         exports.insert(func.to_owned(), Value::native_function(func.to_owned()));
     }
@@ -75,6 +76,7 @@ pub(super) fn call(runtime: &Runtime, name: &str, args: &[Value]) -> Option<Resu
         "search" => search(runtime, args),
         "matches" => matches(runtime, args),
         "replace" => replace(runtime, args),
+        "quotemeta" => quotemeta(runtime, args),
         "sprint" => sprint(runtime, args),
         "split" => split(runtime, args),
         _ => return None,
@@ -323,6 +325,37 @@ fn replace(runtime: &Runtime, args: &[Value]) -> Result<Value> {
         regex.replace(&text, replacement.as_str()).into_owned()
     };
     Ok(Value::String(replaced))
+}
+
+fn quotemeta(runtime: &Runtime, args: &[Value]) -> Result<Value> {
+    require_arity("quotemeta", args, 1)?;
+    let text = runtime.render_value(&args[0])?;
+    let mut out = String::new();
+    for ch in text.chars() {
+        if matches!(
+            ch,
+            '\\' | '/'
+                | '^'
+                | '$'
+                | '.'
+                | '|'
+                | '?'
+                | '*'
+                | '+'
+                | '('
+                | ')'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '"'
+                | '\''
+        ) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    Ok(Value::String(out))
 }
 
 fn sprint(runtime: &Runtime, args: &[Value]) -> Result<Value> {
