@@ -974,8 +974,11 @@ fn runs_lambda_ztest_script() {
             "ok 3 - typed fn shorthand supports parenthesized multi-params\n",
             "ok 4 - typed fn shorthand parenthesized multi-params branch\n",
             "ok 5 - anonymous function expressions are callable\n",
-            "ok 6 - typed fn shorthand enforces argument type\n",
-            "1..6\n",
+            "ok 6 - leading ASCII arrow lambdas bind ^^\n",
+            "ok 7 - leading Unicode arrow lambdas bind ^^\n",
+            "ok 8 - leading arrow lambdas make ^^ optional\n",
+            "ok 9 - typed fn shorthand enforces argument type\n",
+            "1..9\n",
         ),
     );
     assert_eq!(output.stderr, "");
@@ -1091,7 +1094,13 @@ fn runs_loops_ztest_script() {
             "ok 9 - for loop uses object to_Iterator conversion\n",
             "ok 10 - for loop prefers to_Iterator over to_Array\n",
             "ok 11 - for-else runs when iterator is immediately exhausted\n",
-            "1..11\n",
+            "ok 12 - bare for loops bind ^^ as the iteration value\n",
+            "ok 13 - bare for loops work with function iterators\n",
+            "ok 14 - bare for loops keep for-else behaviour\n",
+            "ok 15 - postfix for binds ^^ in its statement\n",
+            "ok 16 - postfix for works with function iterators\n",
+            "ok 17 - chains nested in bare loops shadow only the inner ^^\n",
+            "1..17\n",
         ),
     );
     assert_eq!(output.stderr, "");

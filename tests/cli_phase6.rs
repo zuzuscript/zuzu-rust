@@ -179,12 +179,12 @@ fn cli_opt_help_lists_passes_and_level_defaults() {
     assert!(stdout.contains(
         "  -o2: block-scope-elision, constant-folding, \
          unreachable-pruning, regex-cache, identifier-resolution, \
-         typecheck-skip, operator-enum, collection-presize"
+         typecheck-skip, operator-enum, chain-inline, collection-presize"
     ));
     assert!(stdout.contains(
         "  -o3: block-scope-elision, constant-folding, \
          unreachable-pruning, regex-cache, identifier-resolution, \
-         typecheck-skip, operator-enum, collection-presize, switch-indexing, \
+         typecheck-skip, operator-enum, chain-inline, collection-presize, switch-indexing, \
          range-array-loop-lowering"
     ));
 }
