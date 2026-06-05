@@ -7,6 +7,10 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ## [Unreleased]
 
+### Changed
+
+- Updated the `docs/userguide` and `languagetests` submodules.
+
 ### Fixed
 
 - Included source file paths in lex, parse, incomplete parse, and semantic
@@ -15,6 +19,8 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
   instead of only an anonymous line and column.
 - Fixed function, method, lambda, and anonymous-function parameters so they
   are immutable like the Perl runtime's canonical behaviour.
+- Fixed string and BinaryString indexing and slicing to support character and
+  byte access consistently, including mutation.
 - Added regression coverage for method-call statements using postfix `unless`
   with a membership condition.
 

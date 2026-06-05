@@ -5805,6 +5805,14 @@ impl Runtime {
                 .and_then(|resolved| values.get(resolved))
                 .map(|(key, value)| Value::Pair(key.clone(), Box::new(value.clone())))
                 .unwrap_or(Value::Null)),
+            Value::String(text) => Ok(resolve_index(text.chars().count(), index)
+                .and_then(|resolved| text.chars().nth(resolved))
+                .map(|ch| Value::String(ch.to_string()))
+                .unwrap_or(Value::Null)),
+            Value::BinaryString(bytes) => Ok(resolve_index(bytes.len(), index)
+                .and_then(|resolved| bytes.get(resolved).copied())
+                .map(|byte| Value::BinaryString(vec![byte]))
+                .unwrap_or(Value::Null)),
             _ => Err(ZuzuRustError::runtime(
                 "index access requires an indexable value",
             )),
@@ -5867,8 +5875,34 @@ impl Runtime {
                 let to = end_index.max(start_index) as usize;
                 Ok(Value::String(chars[from..to].iter().collect()))
             }
+            Value::BinaryString(bytes) => {
+                let len = bytes.len() as isize;
+                let mut start_index = match start {
+                    Value::Null => 0,
+                    other => self.value_to_number(&other)? as isize,
+                };
+                if start_index < 0 {
+                    start_index += len;
+                }
+                start_index = start_index.clamp(0, len);
+
+                let end_index = match end {
+                    Value::Null => len,
+                    other => {
+                        let raw_end = self.value_to_number(&other)? as isize;
+                        if raw_end < 0 {
+                            (len + raw_end).clamp(0, len)
+                        } else {
+                            (start_index + raw_end).clamp(0, len)
+                        }
+                    }
+                };
+                let from = start_index.min(end_index) as usize;
+                let to = end_index.max(start_index) as usize;
+                Ok(Value::BinaryString(bytes[from..to].to_vec()))
+            }
             _ => Err(ZuzuRustError::runtime(
-                "slice access requires an Array or String value",
+                "slice access requires an Array, String, or BinaryString value",
             )),
         }
     }
@@ -6725,9 +6759,23 @@ impl Runtime {
                     *shared.borrow_mut() = Value::String(updated);
                     Ok(Value::String(replacement))
                 }
+                Value::BinaryString(bytes) => {
+                    let replacement = match value {
+                        Value::BinaryString(bytes) => bytes,
+                        _ => {
+                            return Err(ZuzuRustError::runtime(
+                                "binary string index assignment requires a BinaryString value",
+                            ))
+                        }
+                    };
+                    let (from, to) = self.binary_index_range(bytes, &index_value)?;
+                    bytes.splice(from..to, replacement.clone());
+                    *shared.borrow_mut() = current;
+                    Ok(Value::BinaryString(replacement))
+                }
                 Value::SystemArray(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
                 other => Err(ZuzuRustError::runtime(format!(
-                    "index assignment requires an Array value, got {}",
+                    "index assignment requires an Array, String, or BinaryString value, got {}",
                     self.typeof_name(other)
                 ))),
             };
@@ -6757,9 +6805,23 @@ impl Runtime {
                     let _ = self.assign_reference(reference, Value::String(updated))?;
                     Ok(Value::String(replacement))
                 }
+                Value::BinaryString(mut bytes) => {
+                    let replacement = match value {
+                        Value::BinaryString(bytes) => bytes,
+                        _ => {
+                            return Err(ZuzuRustError::runtime(
+                                "binary string index assignment requires a BinaryString value",
+                            ))
+                        }
+                    };
+                    let (from, to) = self.binary_index_range(&bytes, &index_value)?;
+                    bytes.splice(from..to, replacement.clone());
+                    let _ = self.assign_reference(reference, Value::BinaryString(bytes))?;
+                    Ok(Value::BinaryString(replacement))
+                }
                 Value::SystemArray(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
                 other => Err(ZuzuRustError::runtime(format!(
-                    "index assignment requires an Array value, got {}",
+                    "index assignment requires an Array, String, or BinaryString value, got {}",
                     self.typeof_name(&other)
                 ))),
             };
@@ -6804,9 +6866,31 @@ impl Runtime {
                     }
                 }
             }
+            Value::BinaryString(mut bytes) => {
+                let replacement = match value {
+                    Value::BinaryString(bytes) => bytes,
+                    _ => {
+                        return Err(ZuzuRustError::runtime(
+                            "binary string index assignment requires a BinaryString value",
+                        ))
+                    }
+                };
+                let (from, to) = self.binary_index_range(&bytes, &index_value)?;
+                bytes.splice(from..to, replacement.clone());
+                match object {
+                    Expression::Identifier { name, .. } => {
+                        env.assign(name, Value::BinaryString(bytes))?;
+                        Ok(Value::BinaryString(replacement))
+                    }
+                    _ => {
+                        self.assign_lvalue(object, Value::BinaryString(bytes), false, env)?;
+                        Ok(Value::BinaryString(replacement))
+                    }
+                }
+            }
             Value::SystemArray(_) => Err(ZuzuRustError::runtime("Cannot modify __system__")),
             other => Err(ZuzuRustError::runtime(format!(
-                "index assignment requires an Array value, got {}",
+                "index assignment requires an Array, String, or BinaryString value, got {}",
                 self.typeof_name(&other)
             ))),
         }
@@ -6981,11 +7065,24 @@ impl Runtime {
                             *shared.borrow_mut() = Value::String(updated);
                             Ok(Value::String(replacement))
                         }
+                        Value::BinaryString(bytes) => {
+                            let replacement = match value {
+                                Value::BinaryString(bytes) => bytes,
+                                _ => return Err(ZuzuRustError::runtime(
+                                    "binary string slice assignment requires a BinaryString value",
+                                )),
+                            };
+                            let (from, to) =
+                                self.binary_slice_range(bytes, &start_value, &count_value)?;
+                            bytes.splice(from..to, replacement.clone());
+                            *shared.borrow_mut() = current;
+                            Ok(Value::BinaryString(replacement))
+                        }
                         Value::SystemArray(_) => {
                             Err(ZuzuRustError::runtime("Cannot modify __system__"))
                         }
                         _ => Err(ZuzuRustError::runtime(
-                            "slice assignment requires an Array or String value",
+                            "slice assignment requires an Array, String, or BinaryString value",
                         )),
                     }
                 }
@@ -7029,8 +7126,22 @@ impl Runtime {
                     )?;
                     Ok(Value::String(replacement))
                 }
+                Value::BinaryString(mut bytes) => {
+                    let replacement = match value {
+                        Value::BinaryString(bytes) => bytes,
+                        _ => {
+                            return Err(ZuzuRustError::runtime(
+                                "binary string slice assignment requires a BinaryString value",
+                            ))
+                        }
+                    };
+                    let (from, to) = self.binary_slice_range(&bytes, &start_value, &count_value)?;
+                    bytes.splice(from..to, replacement.clone());
+                    env.assign(name, Value::BinaryString(bytes))?;
+                    Ok(Value::BinaryString(replacement))
+                }
                 _ => Err(ZuzuRustError::runtime(
-                    "slice assignment requires an Array or String value",
+                    "slice assignment requires an Array, String, or BinaryString value",
                 )),
             }
         } else {
@@ -7064,6 +7175,41 @@ impl Runtime {
 
     fn string_index_range(&self, text: &str, index_value: &Value) -> Result<(usize, usize)> {
         let len = text.chars().count() as isize;
+        let mut index = self.value_to_number(index_value)? as isize;
+        if index < 0 {
+            index += len;
+        }
+        index = index.clamp(0, len);
+        let end = (index + 1).clamp(0, len);
+        Ok((index as usize, end as usize))
+    }
+
+    fn binary_slice_range(
+        &self,
+        bytes: &[u8],
+        start_value: &Value,
+        count_value: &Value,
+    ) -> Result<(usize, usize)> {
+        let len = bytes.len() as isize;
+        let mut start = match start_value {
+            Value::Null => 0,
+            other => self.value_to_number(other)? as isize,
+        };
+        if start < 0 {
+            start += len;
+        }
+        start = start.clamp(0, len);
+        let count = match count_value {
+            Value::Null => len - start,
+            other => self.value_to_number(other)? as isize,
+        }
+        .max(0);
+        let end = (start + count).clamp(0, len);
+        Ok((start as usize, end as usize))
+    }
+
+    fn binary_index_range(&self, bytes: &[u8], index_value: &Value) -> Result<(usize, usize)> {
+        let len = bytes.len() as isize;
         let mut index = self.value_to_number(index_value)? as isize;
         if index < 0 {
             index += len;
