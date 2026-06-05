@@ -2349,10 +2349,11 @@ impl Parser {
 
     fn error_current(&self, message: impl Into<String>) -> ZuzuRustError {
         let token = &self.tokens[self.index];
-        match token.kind {
+        let err = match token.kind {
             TokenKind::Eof => ZuzuRustError::incomplete_parse(message, token.span),
             _ => ZuzuRustError::parse(message, token.span),
-        }
+        };
+        err.with_source_file(self.source_file.as_deref())
     }
 }
 

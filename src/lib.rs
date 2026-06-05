@@ -82,14 +82,16 @@ pub fn parse_program_with_compile_options_and_source_file(
     options: &ParseOptions,
     source_file: Option<&str>,
 ) -> Result<Program> {
-    let tokens = lexer::lex(source)?;
+    let tokens = lexer::lex(source).map_err(|err| err.with_source_file(source_file))?;
     let mut parser = match source_file {
         Some(source_file) => parser::Parser::with_source_file(tokens, source_file),
         None => parser::Parser::new(tokens),
     };
-    let mut program = parser.parse_program()?;
+    let mut program = parser
+        .parse_program()
+        .map_err(|err| err.with_source_file(source_file))?;
     if options.run_sema {
-        sema::validate_program(&program)?;
+        sema::validate_program(&program).map_err(|err| err.with_source_file(source_file))?;
     }
     if options.infer_types {
         infer::annotate_program(&mut program);
@@ -106,10 +108,11 @@ pub fn parse_expression_with_source_file(
     source: &str,
     source_file: Option<&str>,
 ) -> Result<Expression> {
-    let tokens = lexer::lex(source)?;
+    let tokens = lexer::lex(source).map_err(|err| err.with_source_file(source_file))?;
     match source_file {
         Some(source_file) => parser::Parser::with_source_file(tokens, source_file),
         None => parser::Parser::new(tokens),
     }
     .parse_expression_root()
+    .map_err(|err| err.with_source_file(source_file))
 }

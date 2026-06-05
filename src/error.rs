@@ -8,21 +8,25 @@ pub type Result<T> = std::result::Result<T, ZuzuRustError>;
 pub enum ZuzuRustError {
     Lex {
         message: String,
+        source_file: Option<String>,
         line: usize,
         column: usize,
     },
     Parse {
         message: String,
+        source_file: Option<String>,
         line: usize,
         column: usize,
     },
     IncompleteParse {
         message: String,
+        source_file: Option<String>,
         line: usize,
         column: usize,
     },
     Semantic {
         message: String,
+        source_file: Option<String>,
         line: usize,
         column: usize,
     },
@@ -43,6 +47,7 @@ impl ZuzuRustError {
     pub fn parse(message: impl Into<String>, span: Span) -> Self {
         Self::Parse {
             message: message.into(),
+            source_file: None,
             line: span.line,
             column: span.column,
         }
@@ -51,6 +56,7 @@ impl ZuzuRustError {
     pub fn incomplete_parse(message: impl Into<String>, span: Span) -> Self {
         Self::IncompleteParse {
             message: message.into(),
+            source_file: None,
             line: span.line,
             column: span.column,
         }
@@ -59,6 +65,7 @@ impl ZuzuRustError {
     pub fn lex(message: impl Into<String>, line: usize, column: usize) -> Self {
         Self::Lex {
             message: message.into(),
+            source_file: None,
             line,
             column,
         }
@@ -67,6 +74,7 @@ impl ZuzuRustError {
     pub fn semantic(message: impl Into<String>, line: usize) -> Self {
         Self::Semantic {
             message: message.into(),
+            source_file: None,
             line,
             column: 1,
         }
@@ -98,6 +106,35 @@ impl ZuzuRustError {
         }
     }
 
+    pub fn with_source_file(mut self, source_file: Option<&str>) -> Self {
+        let Some(source_file) = source_file else {
+            return self;
+        };
+        let source_file = source_file.to_owned();
+        match &mut self {
+            ZuzuRustError::Lex {
+                source_file: current,
+                ..
+            }
+            | ZuzuRustError::Parse {
+                source_file: current,
+                ..
+            }
+            | ZuzuRustError::IncompleteParse {
+                source_file: current,
+                ..
+            }
+            | ZuzuRustError::Semantic {
+                source_file: current,
+                ..
+            } => {
+                current.get_or_insert(source_file);
+            }
+            _ => {}
+        }
+        self
+    }
+
     pub fn is_iterator_exhausted(&self) -> bool {
         matches!(self, ZuzuRustError::Runtime { message } if message == "iterator exhausted")
     }
@@ -115,24 +152,56 @@ impl fmt::Display for ZuzuRustError {
         match self {
             ZuzuRustError::Lex {
                 message,
+                source_file,
                 line,
                 column,
-            } => write!(f, "lex error at {line}:{column}: {message}"),
+            } => write_diagnostic(
+                f,
+                "lex error",
+                source_file.as_deref(),
+                *line,
+                *column,
+                message,
+            ),
             ZuzuRustError::Parse {
                 message,
+                source_file,
                 line,
                 column,
-            } => write!(f, "parse error at {line}:{column}: {message}"),
+            } => write_diagnostic(
+                f,
+                "parse error",
+                source_file.as_deref(),
+                *line,
+                *column,
+                message,
+            ),
             ZuzuRustError::IncompleteParse {
                 message,
+                source_file,
                 line,
                 column,
-            } => write!(f, "incomplete parse error at {line}:{column}: {message}"),
+            } => write_diagnostic(
+                f,
+                "incomplete parse error",
+                source_file.as_deref(),
+                *line,
+                *column,
+                message,
+            ),
             ZuzuRustError::Semantic {
                 message,
+                source_file,
                 line,
                 column,
-            } => write!(f, "semantic error at {line}:{column}: {message}"),
+            } => write_diagnostic(
+                f,
+                "semantic error",
+                source_file.as_deref(),
+                *line,
+                *column,
+                message,
+            ),
             ZuzuRustError::Thrown { value, .. } => {
                 write!(f, "uncaught exception: {value}")
             }
@@ -140,6 +209,20 @@ impl fmt::Display for ZuzuRustError {
             ZuzuRustError::Cli { message } => write!(f, "{message}"),
             ZuzuRustError::Io(err) => write!(f, "io error: {err}"),
         }
+    }
+}
+
+fn write_diagnostic(
+    f: &mut fmt::Formatter<'_>,
+    kind: &str,
+    source_file: Option<&str>,
+    line: usize,
+    column: usize,
+    message: &str,
+) -> fmt::Result {
+    match source_file {
+        Some(source_file) => write!(f, "{kind} at {source_file}:{line}:{column}: {message}"),
+        None => write!(f, "{kind} at {line}:{column}: {message}"),
     }
 }
 

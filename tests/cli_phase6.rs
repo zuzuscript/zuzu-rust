@@ -303,6 +303,29 @@ fn cli_uses_include_dirs_for_module_search() {
 }
 
 #[test]
+fn cli_reports_imported_module_source_file_for_parse_errors() {
+    let dir = temp_dir("import-parse-diagnostic");
+    let lib = dir.join("lib");
+    let module_dir = lib.join("acme");
+    fs::create_dir_all(&module_dir).expect("module dir should be created");
+    let module = module_dir.join("broken.zzm");
+    fs::write(&module, "function bad ( { return 1; }\n").expect("module should be written");
+    let script = dir.join("main.zzs");
+    fs::write(&script, "from acme/broken import bad;\n").expect("script should be written");
+
+    let include_arg = format!("-I{}", lib.display());
+    let script_arg = script.to_string_lossy().into_owned();
+    let output = run_zuzu(&[&include_arg, &script_arg], &repo_root());
+
+    assert!(!output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("parse error at"));
+    assert!(stderr.contains(&module.display().to_string()));
+    assert!(stderr.contains("Expected name"));
+}
+
+#[test]
 fn cli_include_dir_does_not_move_repo_relative_paths() {
     let output = run_zuzu(
         &[

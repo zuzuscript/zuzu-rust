@@ -1,10 +1,37 @@
 use zuzu_rust::ast::CallArgument;
 use zuzu_rust::{
-    parse_expression, parse_program, parse_program_with_options, Expression, ZuzuRustError,
+    parse_expression, parse_program, parse_program_with_options,
+    parse_program_with_options_and_source_file, Expression, ZuzuRustError,
 };
 
 fn parse_syntax_only(source: &str) -> Result<zuzu_rust::Program, ZuzuRustError> {
     parse_program_with_options(source, false, true)
+}
+
+fn parse_syntax_only_with_source_file(
+    source: &str,
+    source_file: &str,
+) -> Result<zuzu_rust::Program, ZuzuRustError> {
+    parse_program_with_options_and_source_file(source, false, true, Some(source_file))
+}
+
+#[test]
+fn parses_postfix_unless_after_method_call_with_membership_condition() {
+    let program = parse_syntax_only(
+        r#"
+        let out := [];
+        let value := 1;
+        out.push(value) unless value in out;
+        "#,
+    )
+    .expect("method-call statement with postfix unless membership test should parse");
+    let json = program.to_json_pretty();
+
+    assert!(json.contains("\"type\": \"PostfixConditionalStatement\""));
+    assert!(json.contains("\"keyword\": \"unless\""));
+    assert!(json.contains("\"type\": \"CallExpression\""));
+    assert!(json.contains("\"member\": \"push\""));
+    assert!(json.contains("\"operator_kind\": \"membership\""));
 }
 
 #[test]
@@ -675,6 +702,35 @@ fn diagnostics_are_stable_for_representative_failures() {
     assert!(explicit_here_param_err
         .to_string()
         .contains("'^^' is reserved for the chain placeholder"));
+}
+
+#[test]
+fn diagnostics_include_source_file_when_available() {
+    let parse_err = parse_syntax_only_with_source_file("let foo := ;", "main.zzs")
+        .expect_err("missing expression should fail");
+    assert_eq!(
+        parse_err.to_string(),
+        "parse error at main.zzs:1:12: Expected expression",
+    );
+
+    let incomplete_err = parse_syntax_only_with_source_file("if ( true ) {", "main.zzs")
+        .expect_err("unterminated block should fail");
+    assert_eq!(
+        incomplete_err.to_string(),
+        "incomplete parse error at main.zzs:1:14: Expected expression",
+    );
+
+    let semantic_err = parse_program_with_options_and_source_file(
+        "let foo := 1; let foo := 2;",
+        true,
+        true,
+        Some("main.zzs"),
+    )
+    .expect_err("same-scope redeclaration should fail");
+    assert_eq!(
+        semantic_err.to_string(),
+        "semantic error at main.zzs:1:1: Redeclaration of 'foo' in the same scope",
+    );
 }
 
 #[test]
