@@ -9,6 +9,7 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ### Changed
 
+- Bumped the crate version to 0.1.1.
 - Updated the `docs/userguide` and `languagetests` submodules.
 
 ### Fixed
