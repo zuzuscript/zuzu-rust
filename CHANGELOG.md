@@ -13,6 +13,8 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
   diagnostics when source-aware parser entrypoints are used.
 - Fixed imported module parse diagnostics to report the imported module path
   instead of only an anonymous line and column.
+- Fixed function, method, lambda, and anonymous-function parameters so they
+  are immutable like the Perl runtime's canonical behaviour.
 - Added regression coverage for method-call statements using postfix `unless`
   with a membership condition.
 

@@ -600,7 +600,7 @@ impl Validator {
                         },
                     )?;
                 }
-                this.declare_name(&param.name, param.line, true)?;
+                this.declare_name(&param.name, param.line, false)?;
             }
             this.validate_statements(
                 &node.body.statements,
@@ -767,7 +767,7 @@ impl Validator {
                         },
                     )?;
                 }
-                this.declare_name(&param.name, param.line, true)?;
+                this.declare_name(&param.name, param.line, false)?;
             }
             this.validate_statements(
                 &node.body.statements,
@@ -1007,7 +1007,7 @@ impl Validator {
                             },
                         )?;
                     }
-                    this.declare_name(&param.name, param.line, true)?;
+                    this.declare_name(&param.name, param.line, false)?;
                 }
                 this.validate_expression(
                     body,
@@ -1037,7 +1037,7 @@ impl Validator {
                             },
                         )?;
                     }
-                    this.declare_name(&param.name, param.line, true)?;
+                    this.declare_name(&param.name, param.line, false)?;
                 }
                 this.validate_statements(
                     &body.statements,

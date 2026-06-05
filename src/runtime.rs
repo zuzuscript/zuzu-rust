@@ -6619,7 +6619,7 @@ impl Runtime {
             if !(param.optional && matches!(value, Value::Null)) {
                 self.assert_declared_type(param.declared_type.as_deref(), &value, &param.name)?;
             }
-            env.define(param.name.clone(), value, true);
+            env.define(param.name.clone(), value, false);
         }
         if arg_index < args.len() && !variadic_seen {
             return Err(ZuzuRustError::thrown(
