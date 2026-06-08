@@ -7,6 +7,22 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ## [Unreleased]
 
+### Added
+
+- Added the end-user README to packaged output.
+
+### Changed
+
+- Updated statement parsing so simple statements require semicolons unless
+  they are final in a block or file.
+
+### Fixed
+
+- Added support for postfix `return if condition` and
+  `return unless condition` statements.
+
+## [0.1.1] - 2026-06-05
+
 ### Changed
 
 - Bumped the crate version to 0.1.1.
