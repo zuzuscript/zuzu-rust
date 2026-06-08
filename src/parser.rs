@@ -857,7 +857,10 @@ impl Parser {
     fn parse_return_statement(&mut self) -> Result<ReturnStatement> {
         let line = self.current_line();
         self.expect_keyword("return")?;
-        let argument = if self.statement_terminator_here() {
+        let argument = if self.statement_terminator_here()
+            || self.check_keyword("if")
+            || self.check_keyword("unless")
+        {
             None
         } else {
             Some(self.parse_expression()?)
