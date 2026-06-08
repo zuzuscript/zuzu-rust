@@ -84,7 +84,7 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Statement> {
-        let statement = match self.current_kind() {
+        let mut statement = match self.current_kind() {
             TokenKind::Punct('{') => Statement::Block(self.parse_block_statement()?),
             TokenKind::Keyword("from") => {
                 Statement::ImportDeclaration(self.parse_import_declaration()?)
@@ -128,10 +128,11 @@ impl Parser {
             _ => Statement::ExpressionStatement(self.parse_expression_statement()?),
         };
 
+        let needs_separator = statement_needs_separator(&statement);
         if statement_supports_postfix_condition(&statement) {
             if self.match_keyword("for") {
                 let iterable = self.parse_expression()?;
-                return Ok(Statement::ForStatement(ForStatement {
+                statement = Statement::ForStatement(ForStatement {
                     line: statement.line(),
                     source_file: statement.source_file().map(str::to_owned),
                     binding_kind: Some("const".to_owned()),
@@ -144,20 +145,21 @@ impl Parser {
                         needs_lexical_scope: false,
                     },
                     else_block: None,
-                }));
-            }
-            if let Some(keyword) = self.match_postfix_condition_keyword() {
+                });
+            } else if let Some(keyword) = self.match_postfix_condition_keyword() {
                 let test = self.parse_expression()?;
-                return Ok(Statement::PostfixConditionalStatement(
-                    PostfixConditionalStatement {
-                        line: statement.line(),
-                        source_file: statement.source_file().map(str::to_owned),
-                        statement: Box::new(statement),
-                        keyword,
-                        test,
-                    },
-                ));
+                statement = Statement::PostfixConditionalStatement(PostfixConditionalStatement {
+                    line: statement.line(),
+                    source_file: statement.source_file().map(str::to_owned),
+                    statement: Box::new(statement),
+                    keyword,
+                    test,
+                });
             }
+        }
+
+        if needs_separator {
+            self.expect_statement_separator("Expected ; after simple statement")?;
         }
 
         Ok(statement)
@@ -2115,6 +2117,14 @@ impl Parser {
         )
     }
 
+    fn expect_statement_separator(&mut self, message: &str) -> Result<()> {
+        if self.match_punct(';') || self.check_punct('}') || self.at_eof() {
+            Ok(())
+        } else {
+            Err(self.error_current(message))
+        }
+    }
+
     fn current_kind(&self) -> &TokenKind {
         &self.tokens[self.index].kind
     }
@@ -2399,5 +2409,20 @@ fn statement_supports_postfix_condition(statement: &Statement) -> bool {
             | Statement::ThrowStatement(_)
             | Statement::DieStatement(_)
             | Statement::KeywordStatement(_)
+    )
+}
+
+fn statement_needs_separator(statement: &Statement) -> bool {
+    matches!(
+        statement,
+        Statement::VariableDeclaration(_)
+            | Statement::VariableUnpackDeclaration(_)
+            | Statement::ImportDeclaration(_)
+            | Statement::ReturnStatement(_)
+            | Statement::LoopControlStatement(_)
+            | Statement::ThrowStatement(_)
+            | Statement::DieStatement(_)
+            | Statement::KeywordStatement(_)
+            | Statement::ExpressionStatement(_)
     )
 }
