@@ -164,7 +164,7 @@ nice -n 10 cargo run --bin zuzu-rust-run-tests -- languagetests stdlib/tests
 
 ## Project Status
 
-`zuzu-rust` is released as version 0.1.x and is under active development. The
+`zuzu-rust` is released as version 0.2.x and is under active development. The
 `--dump-ast` JSON format is treated as a stable, machine-readable interface for
 tooling.
 
