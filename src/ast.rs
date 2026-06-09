@@ -1907,7 +1907,7 @@ impl Expression {
                 ..
             } => {
                 write_object_start(out);
-                write_string_field(out, indent + 1, "type", "MemberAccess", true);
+                write_string_field(out, indent + 1, "type", "MemberCallExpression", true);
                 write_number_field(out, indent + 1, "line", *line, true);
                 write_optional_string_field(out, indent + 1, "inferred_type", inferred_type, true);
                 write_field_name(out, indent + 1, "object");

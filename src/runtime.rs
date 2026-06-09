@@ -3590,19 +3590,6 @@ impl Runtime {
                 }
                 Err(err) => Err(err),
             },
-            Expression::MemberAccess { object, member, .. } => {
-                let object_value = self.eval_expression(object, Rc::clone(&env))?;
-                match self.deref_value(&object_value)? {
-                    Value::Object(object) => {
-                        self.object_store_slot(&object, member, value.clone(), weak_write)?;
-                        Ok(value)
-                    }
-                    other => Err(ZuzuRustError::runtime(format!(
-                        "member assignment requires an object value, got {}",
-                        self.typeof_name(&other)
-                    ))),
-                }
-            }
             Expression::Index { object, index, .. } => {
                 self.assign_index_target(object, index, value, weak_write, env)
             }
@@ -3650,21 +3637,6 @@ impl Runtime {
                     env.assign_resolved(*binding_depth, name, updated.clone())?;
                 }
                 Ok(updated)
-            }
-            Expression::MemberAccess { object, member, .. } => {
-                let current = self.eval_expression(target, Rc::clone(&env))?;
-                let updated = update(current)?;
-                let object_value = self.eval_expression(object, Rc::clone(&env))?;
-                match self.deref_value(&object_value)? {
-                    Value::Object(object) => {
-                        self.object_store_slot(&object, member, updated.clone(), false)?;
-                        Ok(updated)
-                    }
-                    other => Err(ZuzuRustError::runtime(format!(
-                        "member update requires an object value, got {}",
-                        self.typeof_name(&other)
-                    ))),
-                }
             }
             Expression::Index { object, index, .. } => {
                 let current = self.eval_expression(target, Rc::clone(&env))?;

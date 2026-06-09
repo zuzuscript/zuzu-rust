@@ -779,8 +779,30 @@ fn rejects_loop_control_outside_loop() {
 fn rejects_invalid_assignment_target() {
     let err = parse_program("( a + b ) := 1;").expect_err("invalid assignment target should fail");
     let text = err.to_string();
-    assert!(text.contains("semantic error"));
     assert!(text.contains("invalid assignment target"));
+
+    for source in [
+        "class Box { method p () { return 1; } } let b := new Box(); b.p := 2;",
+        "class Box { method p () { return 1; } } let b := new Box(); b.p() := 2;",
+        "function p () { return 1; } p() := 2;",
+        "class Box { method p () { return 1; } } let b := new Box(); b.p += 2;",
+    ] {
+        let err = parse_program(source).expect_err("call assignment target should fail");
+        let text = err.to_string();
+        assert!(text.contains("invalid assignment target"));
+    }
+}
+
+#[test]
+fn dot_member_dump_uses_method_call_expression_name() {
+    let program = parse_program(
+        "class Box { method p () { return 7; } } let b := new Box(); let value := b.p;",
+    )
+    .expect("dot method call expression should parse");
+    let json = program.to_json_pretty();
+
+    assert!(json.contains("\"type\": \"MemberCallExpression\""));
+    assert!(!json.contains("\"type\": \"MemberAccess\""));
 }
 
 #[test]

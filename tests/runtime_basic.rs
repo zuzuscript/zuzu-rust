@@ -858,6 +858,55 @@ fn zero_arg_dot_syntax_invokes_method_instead_of_reading_property() {
 }
 
 #[test]
+fn no_sema_runtime_rejects_direct_dot_method_lvalues() {
+    let repo_root = repo_root();
+    let runtime = Runtime::from_repo_root(&repo_root).with_parse_options(false, false);
+
+    for source in [
+        r#"
+        class Box {
+            method p () {
+                return 1;
+            }
+        }
+        let box := new Box();
+        box.p := 2;
+        "#,
+        r#"
+        class Box {
+            method p () {
+                return 1;
+            }
+        }
+        let box := new Box();
+        box.p += 2;
+        "#,
+        r#"
+        class Box {
+            method p () {
+                return 1;
+            }
+        }
+        let box := new Box();
+        box.p++;
+        "#,
+    ] {
+        match runtime.run_script_source(source) {
+            Ok(_) => panic!("direct dot method lvalue should fail at runtime without sema"),
+            Err(err) => {
+                let text = err.to_string();
+                assert!(
+                    text.contains("invalid assignment target")
+                        || text.contains("invalid target for unary operator")
+                        || text.contains("unsupported"),
+                    "unexpected error: {text}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn new_expression_allows_postfix_member_calls() {
     let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);

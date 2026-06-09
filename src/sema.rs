@@ -1268,7 +1268,6 @@ fn is_implicit_builtin_name(name: &str) -> bool {
 fn is_assignable(expression: &Expression) -> bool {
     match expression {
         Expression::Identifier { .. } => true,
-        Expression::MemberAccess { .. } => true,
         Expression::Index { .. } => true,
         Expression::Slice { .. } => true,
         Expression::DictAccess { .. } => true,

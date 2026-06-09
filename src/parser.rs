@@ -947,6 +947,9 @@ impl Parser {
                     self.advance();
                     let right = self.parse_expression_prec(PREC_ASSIGNMENT)?;
                     let is_weak_write = self.parse_optional_weak_modifier("assignment")?;
+                    if !Self::is_assignable_expression(&left) {
+                        return Err(self.error_current("invalid assignment target"));
+                    }
                     if is_weak_write && operator != ":=" {
                         return Err(
                             self.error_current("but weak is only valid on ':=' assignments")
@@ -1050,6 +1053,14 @@ impl Parser {
                 let operator = op.clone();
                 self.advance();
                 let argument = self.parse_expression_prec(PREC_PREFIX)?;
+                if (operator == "++" || operator == "--")
+                    && !Self::is_assignable_expression(&argument)
+                {
+                    return Err(self.error_current(format!(
+                        "invalid target for unary operator '{}'",
+                        operator
+                    )));
+                }
                 Ok(Expression::Unary {
                     line: self.previous_line(),
                     source_file: self.source_file(),
@@ -1241,6 +1252,12 @@ impl Parser {
             }
             if self.match_operator("++") || self.match_operator("--") {
                 let operator = self.previous_text();
+                if !Self::is_assignable_expression(&expr) {
+                    return Err(self.error_current(format!(
+                        "invalid target for unary operator '{}'",
+                        operator
+                    )));
+                }
                 expr = Expression::PostfixUpdate {
                     line: expr.line(),
                     source_file: expr.source_file().map(str::to_owned),
@@ -2045,6 +2062,22 @@ impl Parser {
                 Some(op.clone())
             }
             _ => None,
+        }
+    }
+
+    fn is_assignable_expression(expr: &Expression) -> bool {
+        match expr {
+            Expression::Identifier { .. }
+            | Expression::Index { .. }
+            | Expression::Slice { .. }
+            | Expression::DictAccess { .. } => true,
+            Expression::Binary {
+                operator,
+                left: _,
+                right: _,
+                ..
+            } if operator == "@" || operator == "@@" || operator == "@?" => true,
+            _ => false,
         }
     }
 

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project roughly adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- Renamed dumped dot-member AST nodes to `MemberCallExpression` to reflect
+  that `object.name` and `Class.name` are method calls, not member access.
+
+### Fixed
+
+- Rejected direct assignment, compound assignment, and increment/decrement
+  updates targeting method or function calls, while still allowing assignment
+  into collections returned from calls.
+- Removed runtime support for writing object fields through dot syntax so
+  `object.name` and `Class.name` cannot fall back to property access.
+
 ## 0.2.0 - 2026-06-08
 
 *stdlib tag 20260608, languagetests tag 20260608.*
