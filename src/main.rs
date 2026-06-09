@@ -34,6 +34,7 @@ fn run() -> Result<()> {
     let mut debug_level = 0;
     let mut script_path: Option<String> = None;
     let mut script_argv = Vec::new();
+    let mut lint_mode = false;
     let mut show_version = false;
     let mut show_verbose_version = false;
     let mut repl_mode = false;
@@ -51,6 +52,9 @@ fn run() -> Result<()> {
             }
             "--dump-zuzu" => {
                 dump_zuzu = true;
+            }
+            "--lint" => {
+                lint_mode = true;
             }
             "--no-sema" => {
                 run_sema = false;
@@ -200,6 +204,11 @@ fn run() -> Result<()> {
             "expected at most one dump mode: --dump-ast or --dump-zuzu",
         ));
     }
+    if lint_mode && (dump_ast || dump_zuzu) {
+        return Err(ZuzuRustError::cli(
+            "expected exactly one lint mode: --lint or one dump mode",
+        ));
+    }
 
     if repl_mode {
         if !inline_snippets.is_empty() {
@@ -246,22 +255,31 @@ fn run() -> Result<()> {
         }
     };
 
-    if dump_ast || dump_zuzu {
-        let source_file = script_path.as_ref().map(|path| path.to_owned());
-        let options = ParseOptions::new(run_sema, infer_types, optimizations.clone());
+    if dump_ast || dump_zuzu || lint_mode {
+    let source_file = script_path.as_ref().map(|path| path.to_owned());
+        let options = if lint_mode {
+            ParseOptions::new(run_sema, infer_types, OptimizationOptions::disabled())
+        } else {
+            ParseOptions::new(run_sema, infer_types, optimizations.clone())
+        };
         let program = zuzu_rust::parse_program_with_compile_options_and_source_file(
             &source,
             &options,
             source_file.as_deref(),
         )?;
         if run_sema {
-            for warning in zuzu_rust::sema::weak_storage_warnings(&program) {
+            let warnings = if lint_mode {
+                zuzu_rust::sema::lint_warnings(&program)
+            } else {
+                zuzu_rust::sema::weak_storage_warnings(&program)
+            };
+            for warning in warnings {
                 eprintln!("{warning}");
             }
         }
         if dump_ast {
             println!("{}", program.to_json_pretty());
-        } else {
+        } else if dump_zuzu {
             print!("{}", zuzu_rust::codegen::render_program(&program));
         }
         return Ok(());
@@ -307,6 +325,7 @@ Options:
   -R, --repl             start interactive REPL shell
   --dump-ast             print parsed AST as stable JSON
   --dump-zuzu            print parsed AST as ZuzuScript source
+  --lint                 parse and print semantic warnings only
   --no-sema              skip semantic validation
   --no-infer             skip type inference annotations
   -h, --help             show this help

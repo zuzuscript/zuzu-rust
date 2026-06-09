@@ -7,6 +7,10 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ## Unreleased
 
+### Added
+
+- `--lint` option for detecting common antipatterns in Zuzu code.
+
 ### Changed
 
 - Renamed dumped dot-member AST nodes to `MemberCallExpression` to reflect

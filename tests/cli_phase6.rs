@@ -565,3 +565,86 @@ fn cli_repl_continues_triple_quoted_and_triple_backtick_literals() {
     assert!(stdout.contains("beta"));
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
+
+#[test]
+fn cli_lint_reports_style_warning_suggestions() {
+    let source = r#"
+        let candidate := 1;
+        let mutable := 1;
+        mutable = 2;
+
+        if (typeof candidate == "Number") {
+        }
+        if (typeof candidate eq "String") {
+        }
+
+        if (candidate > 100) {
+        } else if (candidate > 10) {
+        } else {
+        }
+
+        if (candidate = null) {
+        }
+    "#;
+
+    let output = run_zuzu(&["--lint", "-e", source], &repo_root());
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains(
+        "prefer 'instanceof' for runtime type checks"
+    ));
+    assert!(stderr.contains("can be declared with const"));
+    assert!(stderr.contains(
+        "multiple else-if comparisons over the same term can be expressed as a switch"
+    ));
+    assert!(stderr.contains(
+        "comparing to null with '=' is fragile; use a type-aware null comparison operator"
+    ));
+}
+
+#[test]
+fn cli_lint_suggests_moving_top_level_import_into_single_callable_scope() {
+    let dir = temp_dir("lint-import-scope");
+    let lib = dir.join("lib");
+    let module_dir = lib.join("acme");
+    fs::create_dir_all(&module_dir).expect("module dir should be created");
+    fs::write(
+        module_dir.join("tool.zzm"),
+        r#"
+        function helper () {
+            return 1;
+        }
+        "#,
+    )
+    .expect("module file should be written");
+    let include_arg = format!("-I{}", lib.display());
+
+    let single_scope = run_zuzu(
+        &[
+            "--lint",
+            &include_arg,
+            "-e",
+            "from acme/tool import helper; function use_helper () { helper(); }",
+        ],
+        &repo_root(),
+    );
+    assert!(single_scope.status.success());
+    let single_scope_stderr = String::from_utf8_lossy(&single_scope.stderr);
+    assert!(single_scope_stderr.contains("imported symbol 'helper' is only used inside"));
+    assert!(single_scope_stderr.contains("consider moving this import into that function/method"));
+
+    let multiple_scopes = run_zuzu(
+        &[
+            "--lint",
+            &include_arg,
+            "-e",
+            "from acme/tool import helper; function use_helper () { helper(); } helper();",
+        ],
+        &repo_root(),
+    );
+    assert!(multiple_scopes.status.success());
+    let multiple_scopes_stderr = String::from_utf8_lossy(&multiple_scopes.stderr);
+    assert!(!multiple_scopes_stderr.contains("imported symbol 'helper' is only used inside"));
+}

@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ast::{
     CallArgument, CatchClause, ClassDeclaration, ClassMember, DeclarationBindingEntry, DictEntry,
-    DictKey, Expression, FunctionDeclaration, ImportDeclaration, MethodDeclaration, Program,
-    Statement, TemplatePart, TraitDeclaration, VariableUnpackDeclaration,
+    DictKey, Expression, FunctionDeclaration, IfStatement, ImportDeclaration, MethodDeclaration,
+    Program, Statement, TemplatePart, TraitDeclaration, VariableUnpackDeclaration,
 };
 use crate::error::{Result, ZuzuRustError};
 
@@ -32,6 +32,734 @@ pub fn weak_storage_warnings(program: &Program) -> Vec<String> {
     let mut warnings = Vec::new();
     collect_statement_warnings(&program.statements, &mut warnings);
     warnings
+}
+
+pub fn lint_warnings(program: &Program) -> Vec<String> {
+    let mut warnings = Vec::new();
+    collect_lint_statement_warnings(&program.statements, &mut warnings);
+    warnings.extend(weak_storage_warnings(program));
+    warnings
+}
+
+#[derive(Clone, Copy)]
+struct LintLetBinding {
+    line: usize,
+    is_reassigned: bool,
+}
+
+#[derive(Default)]
+struct LintImportUsage {
+    declaration_line: usize,
+    top_level_count: usize,
+    callable_count: HashMap<String, usize>,
+}
+
+fn collect_lint_statement_warnings(statements: &[Statement], warnings: &mut Vec<String>) {
+    let mut collector = LintCollector::new();
+    collector.collect_statements(statements, warnings);
+    collector.complete(warnings);
+}
+
+struct LintCollector {
+    scopes: Vec<HashMap<String, LintLetBinding>>,
+    top_level_imports: HashMap<String, LintImportUsage>,
+    imported_symbol_order: Vec<String>,
+    callable_scope: Vec<String>,
+}
+
+impl LintCollector {
+    fn new() -> Self {
+        Self {
+            scopes: vec![HashMap::new()],
+            top_level_imports: HashMap::new(),
+            imported_symbol_order: Vec::new(),
+            callable_scope: Vec::new(),
+        }
+    }
+
+    fn collect_statements(&mut self, statements: &[Statement], warnings: &mut Vec<String>) {
+        for statement in statements {
+            self.collect_statement(statement, warnings);
+        }
+    }
+
+    fn complete(&mut self, warnings: &mut Vec<String>) {
+        while !self.scopes.is_empty() {
+            self.exit_scope(warnings);
+        }
+        self.emit_import_scoped_warnings(warnings);
+    }
+
+    fn collect_statement(&mut self, statement: &Statement, warnings: &mut Vec<String>) {
+        match statement {
+            Statement::Block(node) => {
+                self.collect_scoped_block(node.statements.as_slice(), node.needs_lexical_scope, warnings);
+            }
+            Statement::VariableDeclaration(node) => {
+                if node.kind == "let" {
+                    self.declare_let_binding(node.line, &node.name);
+                }
+                if let Some(init) = &node.init {
+                    self.collect_expression(init, warnings);
+                }
+            }
+            Statement::VariableUnpackDeclaration(node) => {
+                if node.kind == "let" {
+                    for entry in node.pattern.entries() {
+                        self.declare_let_binding(entry.line, &entry.name);
+                    }
+                }
+                self.collect_expression(&node.init, warnings);
+                for entry in node.pattern.entries() {
+                    if let Some(default_value) = &entry.default_value {
+                        self.collect_expression(default_value, warnings);
+                    }
+                    collect_dict_key_warnings(&entry.key, warnings);
+                    collect_weak_decl_warning(
+                        entry.is_weak_storage,
+                        entry.declared_type.as_deref(),
+                        &entry.name,
+                        entry.line,
+                        warnings,
+                    );
+                }
+            }
+            Statement::FunctionDeclaration(node) => {
+                let context = format!("function '{}'", node.name);
+                self.enter_callable_scope(&context);
+                for param in &node.params {
+                    if let Some(default_value) = &param.default_value {
+                        self.collect_expression(default_value, warnings);
+                    }
+                }
+                self.collect_scoped_block(node.body.statements.as_slice(), true, warnings);
+                self.exit_callable_scope();
+            }
+            Statement::ClassDeclaration(node) => {
+                for member in &node.body {
+                    match member {
+                        ClassMember::Field(field) => {
+                            if let Some(default_value) = &field.default_value {
+                                self.collect_expression(default_value, warnings);
+                            }
+                        }
+                        ClassMember::Method(method) => {
+                            let context = format!("method '{}::{}'", node.name, method.name);
+                            self.enter_callable_scope(&context);
+                            for param in &method.params {
+                                if let Some(default_value) = &param.default_value {
+                                    self.collect_expression(default_value, warnings);
+                                }
+                            }
+                            self.collect_scoped_block(method.body.statements.as_slice(), true, warnings);
+                            self.exit_callable_scope();
+                        }
+                        ClassMember::Class(class_decl) => {
+                            self.collect_statement(&Statement::ClassDeclaration(class_decl.clone()), warnings);
+                        }
+                        ClassMember::Trait(trait_decl) => {
+                            self.collect_statement(&Statement::TraitDeclaration(trait_decl.clone()), warnings);
+                        }
+                    }
+                }
+            }
+            Statement::TraitDeclaration(node) => {
+                for member in &node.body {
+                    if let ClassMember::Method(method) = member {
+                        let context = format!("method '{}::{}'", node.name, method.name);
+                        self.enter_callable_scope(&context);
+                        for param in &method.params {
+                            if let Some(default_value) = &param.default_value {
+                                self.collect_expression(default_value, warnings);
+                            }
+                        }
+                        self.collect_scoped_block(method.body.statements.as_slice(), true, warnings);
+                        self.exit_callable_scope();
+                    }
+                }
+            }
+            Statement::ImportDeclaration(node) => {
+                if self.callable_scope.is_empty() && !node.import_all {
+                    for specifier in &node.specifiers {
+                        self.register_top_level_import(specifier.line, &specifier.local);
+                    }
+                }
+                if let Some(condition) = &node.condition {
+                    self.collect_expression(&condition.test, warnings);
+                }
+            }
+            Statement::IfStatement(node) => {
+                self.collect_if_chain(node, warnings);
+            }
+            Statement::WhileStatement(node) => {
+                self.collect_expression(&node.test, warnings);
+                self.collect_scoped_block(node.body.statements.as_slice(), true, warnings);
+            }
+            Statement::ForStatement(node) => {
+                if node.binding_kind.as_deref() == Some("let") {
+                    self.declare_let_binding(node.line, &node.variable);
+                }
+                self.collect_expression(&node.iterable, warnings);
+                self.collect_scoped_block(node.body.statements.as_slice(), true, warnings);
+                if let Some(else_block) = &node.else_block {
+                    self.collect_scoped_block(
+                        else_block.statements.as_slice(),
+                        else_block.needs_lexical_scope,
+                        warnings,
+                    );
+                }
+            }
+            Statement::SwitchStatement(node) => {
+                self.collect_expression(&node.discriminant, warnings);
+                for case in &node.cases {
+                    for value in &case.values {
+                        self.collect_expression(value, warnings);
+                    }
+                    self.collect_scoped_block(case.consequent.as_slice(), true, warnings);
+                }
+                if let Some(default) = &node.default {
+                    self.collect_scoped_block(default.as_slice(), true, warnings);
+                }
+            }
+            Statement::TryStatement(node) => {
+                self.collect_scoped_block(node.body.statements.as_slice(), true, warnings);
+                for handler in &node.handlers {
+                    self.collect_scoped_block(handler.body.statements.as_slice(), true, warnings);
+                }
+            }
+            Statement::ReturnStatement(node) => {
+                if let Some(argument) = &node.argument {
+                    self.collect_expression(argument, warnings);
+                }
+            }
+            Statement::ThrowStatement(node) => {
+                self.collect_expression(&node.argument, warnings);
+            }
+            Statement::DieStatement(node) => {
+                self.collect_expression(&node.argument, warnings);
+            }
+            Statement::PostfixConditionalStatement(node) => {
+                self.collect_statement(node.statement.as_ref(), warnings);
+                self.collect_expression(&node.test, warnings);
+            }
+            Statement::KeywordStatement(node) => {
+                for argument in &node.arguments {
+                    self.collect_expression(argument, warnings);
+                }
+            }
+            Statement::ExpressionStatement(node) => {
+                self.collect_expression(&node.expression, warnings);
+            }
+            Statement::LoopControlStatement(_) => {}
+        }
+    }
+
+    fn collect_expression(&mut self, expression: &Expression, warnings: &mut Vec<String>) {
+        match expression {
+            Expression::ArrayLiteral { elements, .. }
+            | Expression::SetLiteral { elements, .. }
+            | Expression::BagLiteral { elements, .. } => {
+                for element in elements {
+                    self.collect_expression(element, warnings);
+                }
+            }
+            Expression::DictLiteral { entries, .. } | Expression::PairListLiteral { entries, .. } => {
+                for entry in entries {
+                    collect_dict_key_warnings(&entry.key, warnings);
+                    self.collect_expression(&entry.value, warnings);
+                }
+            }
+            Expression::TemplateLiteral { parts, .. } | Expression::RegexLiteral { parts, .. } => {
+                for part in parts {
+                    if let TemplatePart::Expression { expression, .. } = part {
+                        self.collect_expression(expression, warnings);
+                    }
+                }
+            }
+            Expression::Unary {
+                operator,
+                argument,
+                ..
+            } => {
+                if operator == "++" || operator == "--" {
+                    self.record_reassignment_on_identifier(argument.as_ref());
+                }
+                self.collect_expression(argument, warnings);
+            }
+            Expression::Binary {
+                line,
+                operator,
+                left,
+                right,
+                ..
+            } => {
+                self.record_typeof_comparison_warning(
+                    *line,
+                    operator,
+                    left.as_ref(),
+                    right.as_ref(),
+                    warnings,
+                );
+                self.record_null_comparison_warning(
+                    *line,
+                    operator,
+                    left.as_ref(),
+                    right.as_ref(),
+                    warnings,
+                );
+                self.collect_expression(left, warnings);
+                self.collect_expression(right, warnings);
+            }
+            Expression::DefinedOr { left, right, .. } => {
+                self.collect_expression(left, warnings);
+                self.collect_expression(right, warnings);
+            }
+            Expression::Assignment {
+                left, right, ..
+            } => {
+                self.record_reassignment_on_identifier(left.as_ref());
+                self.collect_expression(left, warnings);
+                self.collect_expression(right, warnings);
+            }
+            Expression::PostfixUpdate { operator, argument, .. } => {
+                if operator == "++" || operator == "--" {
+                    self.record_reassignment_on_identifier(argument.as_ref());
+                }
+                self.collect_expression(argument, warnings);
+            }
+            Expression::Ternary {
+                test,
+                consequent,
+                alternate,
+                ..
+            } => {
+                self.collect_expression(test, warnings);
+                self.collect_expression(consequent, warnings);
+                self.collect_expression(alternate, warnings);
+            }
+            Expression::Call {
+                callee,
+                arguments,
+                ..
+            } => {
+                self.collect_expression(callee, warnings);
+                self.collect_call_argument_expressions(arguments, warnings);
+            }
+            Expression::MemberAccess { object, .. } => {
+                self.collect_expression(object, warnings);
+            }
+            Expression::DynamicMemberCall {
+                object,
+                member,
+                arguments,
+                ..
+            } => {
+                self.collect_expression(object, warnings);
+                self.collect_expression(member, warnings);
+                self.collect_call_argument_expressions(arguments, warnings);
+            }
+            Expression::Index { object, index, .. } => {
+                self.collect_expression(object, warnings);
+                self.collect_expression(index, warnings);
+            }
+            Expression::Slice {
+                object,
+                start,
+                end,
+                ..
+            } => {
+                self.collect_expression(object, warnings);
+                if let Some(start) = start {
+                    self.collect_expression(start, warnings);
+                }
+                if let Some(end) = end {
+                    self.collect_expression(end, warnings);
+                }
+            }
+            Expression::DictAccess { object, key, .. } => {
+                self.collect_expression(object, warnings);
+                collect_dict_key_warnings(key, warnings);
+            }
+            Expression::Lambda {
+                line,
+                params,
+                body,
+                ..
+            } => {
+                let context = format!("lambda at line {line}");
+                self.enter_callable_scope(&context);
+                for param in params {
+                    if let Some(default_value) = &param.default_value {
+                        self.collect_expression(default_value, warnings);
+                    }
+                }
+                self.collect_expression(body, warnings);
+                self.exit_callable_scope();
+            }
+            Expression::FunctionExpression {
+                line,
+                params,
+                body,
+                ..
+            } => {
+                let context = format!("function expression at line {line}");
+                self.enter_callable_scope(&context);
+                for param in params {
+                    if let Some(default_value) = &param.default_value {
+                        self.collect_expression(default_value, warnings);
+                    }
+                }
+                self.collect_scoped_block(body.statements.as_slice(), true, warnings);
+                self.exit_callable_scope();
+            }
+            Expression::LetExpression {
+                line,
+                declared_type,
+                name,
+                kind,
+                init,
+                is_weak_storage,
+                ..
+            } => {
+                if kind == "let" {
+                    self.declare_let_binding(*line, name);
+                }
+                collect_weak_decl_warning(
+                    *is_weak_storage,
+                    declared_type.as_deref(),
+                    name,
+                    *line,
+                    warnings,
+                );
+                if let Some(init) = init {
+                    self.collect_expression(init, warnings);
+                }
+            }
+            Expression::TryExpression { body, handlers, .. } => {
+                self.collect_scoped_block(body.statements.as_slice(), true, warnings);
+                for handler in handlers {
+                    self.collect_scoped_block(handler.body.statements.as_slice(), true, warnings);
+                }
+            }
+            Expression::DoExpression { body, .. }
+            | Expression::AwaitExpression { body, .. }
+            | Expression::SpawnExpression { body, .. } => {
+                self.collect_scoped_block(body.statements.as_slice(), true, warnings);
+            }
+            Expression::SuperCall { arguments, .. } => {
+                self.collect_call_argument_expressions(arguments, warnings);
+            }
+            Expression::Identifier { name, .. } => {
+                self.record_imported_identifier_usage(name);
+            }
+            Expression::NumberLiteral { .. }
+            | Expression::StringLiteral { .. }
+            | Expression::BinaryStringLiteral { .. }
+            | Expression::BooleanLiteral { .. }
+            | Expression::NullLiteral { .. } => {}
+        }
+    }
+
+    fn collect_call_argument_expressions(
+        &mut self,
+        arguments: &[CallArgument],
+        warnings: &mut Vec<String>,
+    ) {
+        for argument in arguments {
+            match argument {
+                CallArgument::Positional { value, .. } => self.collect_expression(value, warnings),
+                CallArgument::Spread { value, .. } => self.collect_expression(value, warnings),
+                CallArgument::Named { name, value, .. } => {
+                    collect_dict_key_warnings(name, warnings);
+                    self.collect_expression(value, warnings);
+                }
+            }
+        }
+    }
+
+    fn collect_if_chain(&mut self, node: &IfStatement, warnings: &mut Vec<String>) {
+        let chain = collect_if_chain(node);
+        if let Some(warning) = check_if_chain_switch_warning(&chain) {
+            warnings.push(warning);
+        }
+        for &if_node in chain.iter() {
+            self.collect_expression(&if_node.test, warnings);
+            self.collect_scoped_block(
+                if_node.consequent.statements.as_slice(),
+                if_node.consequent.needs_lexical_scope,
+                warnings,
+            );
+        }
+        if let Some(last) = chain.last() {
+            if let Some(alternate) = &last.alternate {
+                if !matches!(alternate.as_ref(), Statement::IfStatement(_)) {
+                    self.collect_statement(alternate, warnings);
+                }
+            }
+        }
+    }
+
+    fn collect_scoped_block(
+        &mut self,
+        statements: &[Statement],
+        needs_scope: bool,
+        warnings: &mut Vec<String>,
+    ) {
+        if needs_scope {
+            self.enter_scope();
+            self.collect_statements(statements, warnings);
+            self.exit_scope(warnings);
+        } else {
+            self.collect_statements(statements, warnings);
+        }
+    }
+
+    fn declare_let_binding(&mut self, line: usize, name: &str) {
+        self.scopes
+            .last_mut()
+            .expect("scope stack should not be empty")
+            .insert(name.to_owned(), LintLetBinding {
+                line,
+                is_reassigned: false,
+            });
+    }
+
+    fn record_reassignment_on_identifier(&mut self, expression: &Expression) {
+        if let Expression::Identifier { name, .. } = expression {
+            self.record_identifier_reassignment(name);
+        }
+    }
+
+    fn record_identifier_reassignment(&mut self, name: &str) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(binding) = scope.get_mut(name) {
+                binding.is_reassigned = true;
+                return;
+            }
+        }
+    }
+
+    fn record_imported_identifier_usage(&mut self, name: &str) {
+        let Some(usage) = self.top_level_imports.get_mut(name) else {
+            return;
+        };
+        if let Some(context) = self.callable_scope.last() {
+            *usage.callable_count.entry(context.clone()).or_insert(0) += 1;
+            return;
+        }
+        usage.top_level_count += 1;
+    }
+
+    fn register_top_level_import(&mut self, line: usize, local_name: &str) {
+        if self.top_level_imports.contains_key(local_name) {
+            return;
+        }
+        self.imported_symbol_order.push(local_name.to_string());
+        self.top_level_imports.insert(
+            local_name.to_string(),
+            LintImportUsage {
+                declaration_line: line,
+                ..LintImportUsage::default()
+            },
+        );
+    }
+
+    fn enter_callable_scope(&mut self, context: &str) {
+        self.callable_scope.push(context.to_string());
+    }
+
+    fn exit_callable_scope(&mut self) {
+        self.callable_scope
+            .pop()
+            .expect("callable scope stack should not be empty");
+    }
+
+    fn record_typeof_comparison_warning(
+        &self,
+        line: usize,
+        operator: &str,
+        left: &Expression,
+        right: &Expression,
+        warnings: &mut Vec<String>,
+    ) {
+        if operator != "==" && operator != "eq" {
+            return;
+        }
+
+        let left_is_typeof = matches!(
+            left,
+            Expression::Unary {
+                operator,
+                ..
+            } if operator == "typeof"
+        );
+        let right_is_typeof = matches!(
+            right,
+            Expression::Unary {
+                operator,
+                ..
+            } if operator == "typeof"
+        );
+        let Some(type_name) = (match (left_is_typeof, right_is_typeof, left, right) {
+            (true, false, _, Expression::StringLiteral { value, .. }) => Some(value.as_str()),
+            (false, true, Expression::StringLiteral { value, .. }, _) => Some(value.as_str()),
+            _ => None,
+        }) else {
+            return;
+        };
+        warnings.push(format!(
+            "SemanticWarning at line {line}: prefer 'instanceof' for runtime type checks instead of 'typeof ... {operator} \"{type_name}\"'"
+        ));
+    }
+
+    fn record_null_comparison_warning(
+        &self,
+        line: usize,
+        operator: &str,
+        left: &Expression,
+        right: &Expression,
+        warnings: &mut Vec<String>,
+    ) {
+        if operator != "=" && operator != "eq" {
+            return;
+        }
+        if !matches!(left, Expression::NullLiteral { .. })
+            && !matches!(right, Expression::NullLiteral { .. })
+        {
+            return;
+        }
+        warnings.push(format!(
+            "SemanticWarning at line {line}: comparing to null with '{operator}' is fragile; use a type-aware null comparison operator"
+        ));
+    }
+
+    fn enter_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    fn exit_scope(&mut self, warnings: &mut Vec<String>) {
+        let scope = self.scopes.pop().expect("scope stack should not be empty");
+        for (name, state) in scope {
+            if !state.is_reassigned {
+                warnings.push(format!(
+                    "SemanticWarning at line {}: '{}' can be declared with const",
+                    state.line, name
+                ));
+            }
+        }
+    }
+
+    fn emit_import_scoped_warnings(&mut self, warnings: &mut Vec<String>) {
+        for local_name in &self.imported_symbol_order {
+            let Some(usage) = self.top_level_imports.get(local_name) else {
+                continue;
+            };
+            if usage.top_level_count > 0 {
+                continue;
+            }
+            let mut used_scopes = usage
+                .callable_count
+                .iter()
+                .filter(|(_, count)| **count > 0)
+                .map(|(scope, _)| scope)
+                .collect::<Vec<_>>();
+            if used_scopes.len() != 1 {
+                continue;
+            }
+            let scope = used_scopes.remove(0);
+            warnings.push(format!(
+                "SemanticWarning at line {}: imported symbol '{}' is only used inside {}; consider moving this import into that function/method",
+                usage.declaration_line, local_name, scope
+            ));
+        }
+    }
+}
+
+fn collect_if_chain(node: &IfStatement) -> Vec<&IfStatement> {
+    let mut chain = Vec::new();
+    let mut current: &IfStatement = node;
+    loop {
+        chain.push(current);
+        match &current.alternate {
+            Some(statement)
+                if matches!(statement.as_ref(), Statement::IfStatement(_)) =>
+            {
+                if let Statement::IfStatement(next) = statement.as_ref() {
+                    current = next;
+                }
+            }
+            _ => break,
+        }
+    }
+    chain
+}
+
+fn check_if_chain_switch_warning(chain: &[&IfStatement]) -> Option<String> {
+    if chain.len() < 2 {
+        return None;
+    }
+    let mut comparator: Option<&str> = None;
+    let mut left_expr: Option<&Expression> = None;
+    for node in chain {
+        let Expression::Binary {
+            operator,
+            left: node_left_expr,
+            right: _,
+            ..
+        } = &node.test
+        else {
+            return None;
+        };
+        if !is_switch_comparator(operator) {
+            return None;
+        }
+        if let Some(current) = comparator {
+            if current != operator.as_str() {
+                return None;
+            }
+        } else {
+            comparator = Some(operator.as_str());
+        }
+        if let Some(reference) = left_expr {
+            if !expressions_structurally_equal(reference, node_left_expr.as_ref()) {
+                return None;
+            }
+        } else {
+            left_expr = Some(node_left_expr.as_ref());
+        }
+    }
+    comparator.map(|_| {
+        format!(
+            "SemanticWarning at line {}: multiple else-if comparisons over the same term can be expressed as a switch",
+            chain[0].line
+        )
+    })
+}
+
+fn is_switch_comparator(operator: &str) -> bool {
+    matches!(
+        operator,
+        "==" | "≡" | "!=" | "≢" | "=" | "≠" | ">" | "<" | ">=" | "≤" | "<=" | "≥" | "lt"
+            | "gt" | "le" | "ge" | "eq" | "ne" | "lti" | "gti" | "lei" | "gei" | "nei"
+    )
+}
+
+fn expressions_structurally_equal(left: &Expression, right: &Expression) -> bool {
+    match (left, right) {
+        (Expression::Identifier { name: a, .. }, Expression::Identifier { name: b, .. }) => a == b,
+        (Expression::MemberAccess { object: a_object, member: a_member, .. }, Expression::MemberAccess { object: b_object, member: b_member, .. }) => {
+            a_member == b_member && expressions_structurally_equal(a_object, b_object)
+        }
+        (Expression::Unary { operator: a_operator, argument: a_argument, .. }, Expression::Unary { operator: b_operator, argument: b_argument, .. }) => {
+            a_operator == b_operator && expressions_structurally_equal(a_argument, b_argument)
+        }
+        (Expression::Binary { operator: a_operator, left: a_left, right: a_right, .. }, Expression::Binary { operator: b_operator, left: b_left, right: b_right, .. }) => {
+            a_operator == b_operator
+                && expressions_structurally_equal(a_left, b_left)
+                && expressions_structurally_equal(a_right, b_right)
+        }
+        _ => false,
+    }
 }
 
 fn collect_statement_warnings(statements: &[Statement], warnings: &mut Vec<String>) {
