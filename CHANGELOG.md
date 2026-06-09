@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project roughly adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.3.0 - 2026-06-10
+
+*stdlib tag 20260610, languagetests tag 20260610.*
 
 ### Added
 
@@ -15,6 +17,7 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 - Renamed dumped dot-member AST nodes to `MemberCallExpression` to reflect
   that `object.name` and `Class.name` are method calls, not member access.
+- Bumped the crate version to 0.3.0.
 
 ### Fixed
 
