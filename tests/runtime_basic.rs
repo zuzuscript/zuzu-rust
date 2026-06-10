@@ -2014,6 +2014,31 @@ fn runs_field_accessors_ztest_script() {
 }
 
 #[test]
+fn runs_method_returns_global_ztest_script() {
+    let repo_root = repo_root();
+    let script = repo_root.join("languagetests/lang/oop/method-returns-global.zzs");
+
+    let runtime = Runtime::from_repo_root(&repo_root);
+    let output = runtime
+        .run_script_file(&script)
+        .expect("method-returns-global.zzs should execute successfully");
+
+    assert_eq!(
+        output.stdout,
+        concat!(
+            "ok 1 - method returns module const Dict\n",
+            "ok 2 - method returns module const String\n",
+            "ok 3 - parenthesised bare return works\n",
+            "ok 4 - implicit bare-identifier return works\n",
+            "ok 5 - method returns module let\n",
+            "ok 6 - trivial field getter still works\n",
+            "1..6\n",
+        ),
+    );
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
 fn runs_assignment_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/operators/assignment.zzs");

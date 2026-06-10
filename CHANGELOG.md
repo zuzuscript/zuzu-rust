@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project roughly adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- A zero-parameter method whose entire body is a bare-identifier return
+  (or a lone bare-identifier statement) was short-circuited as a trivial
+  field getter even when the identifier named a module-level global, so
+  `return SOME_GLOBAL;` from a method silently returned Null. The fast
+  path now only applies when the identifier really is a field of the
+  object. (See docs/historic/bug-trivial-getter-shadows-globals.md.)
+
 ## 0.3.0 - 2026-06-10
 
 *stdlib tag 20260610, languagetests tag 20260610.*

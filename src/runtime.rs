@@ -881,12 +881,10 @@ impl Runtime {
             },
             _ => None,
         }?;
-        let value = object
-            .borrow()
-            .fields
-            .get(field_name)
-            .cloned()
-            .unwrap_or(Value::Null);
+        // Only short-circuit when the identifier really is a field of the
+        // object; anything else (e.g. a module global) must go through the
+        // normal call path so the environment chain resolves it.
+        let value = object.borrow().fields.get(field_name).cloned()?;
         Some(Ok(if value.is_weak_value() {
             value.resolve_weak_value()
         } else {
