@@ -14,7 +14,7 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
   field getter even when the identifier named a module-level global, so
   `return SOME_GLOBAL;` from a method silently returned Null. The fast
   path now only applies when the identifier really is a field of the
-  object. (See docs/historic/bug-trivial-getter-shadows-globals.md.)
+  object.
 
 ## 0.3.0 - 2026-06-10
 
