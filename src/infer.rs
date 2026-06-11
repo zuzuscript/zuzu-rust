@@ -389,10 +389,12 @@ fn this_infer_expression(inferencer: &mut Inferencer, expression: &mut Expressio
                 | "≡" | "≢" | "<" | "<=" | ">" | ">=" | "≤" | "≥" | "eq" | "ne" | "gt" | "ge"
                 | "lt" | "le" | "eqi" | "nei" | "gti" | "gei" | "lti" | "lei" | "in" | "∈"
                 | "∉" | "subsetof" | "⊂" | "supersetof" | "⊃" | "equivalentof" | "⊂⊃"
-                | "instanceof" | "does" | "can" | "@?" => Some("Boolean".to_owned()),
+                | "instanceof" | "does" | "can" | "@?" | "∣" | "divides" => {
+                    Some("Boolean".to_owned())
+                }
                 "_" => Some("String".to_owned()),
                 "+" | "-" | "*" | "/" | "×" | "÷" | "mod" | "**" | "<=>" | "≶" | "≷" | "cmp"
-                | "cmpi" => Some("Number".to_owned()),
+                | "cmpi" | "∤" => Some("Number".to_owned()),
                 "union" | "⋃" | "intersection" | "⋂" | "\\" | "∖" => same_type(left, right),
                 "default" => match left.inferred_type() {
                     Some("Null") => Some("PairList".to_owned()),

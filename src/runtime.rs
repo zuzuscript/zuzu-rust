@@ -3284,6 +3284,17 @@ impl Runtime {
                 let rhs = self.eval_expression(right, env)?;
                 self.eval_shift(operator, lhs, rhs)
             }
+            "∣" | "divides" | "∤" => {
+                let lhs = self.value_to_number(&self.eval_expression(left, Rc::clone(&env))?)?;
+                let rhs = self.value_to_number(&self.eval_expression(right, env)?)?;
+                // The left operand is the divisor: a ∣ b tests b mod a.
+                let remainder = rhs % lhs;
+                Ok(if operator == "∤" {
+                    Value::Number(remainder)
+                } else {
+                    Value::Boolean(remainder == 0.0)
+                })
+            }
             "instanceof" => {
                 let lhs = self.eval_expression(left, Rc::clone(&env))?;
                 let rhs = self.eval_expression(right, env)?;

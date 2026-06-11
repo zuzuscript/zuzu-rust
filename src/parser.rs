@@ -2147,7 +2147,7 @@ impl Parser {
             | "gt" | "ge" | "lt" | "le" | "cmp" | "eqi" | "nei" | "gti" | "gei" | "lti" | "lei"
             | "cmpi" | "in" | "∈" | "∉" | "subsetof" | "⊂" | "supersetof" | "⊃"
             | "equivalentof" | "⊂⊃" | "instanceof" | "does" | "can" | "~" | "->" | "@" | "@?"
-            | "@@" => Some((PREC_COMPARISON, false)),
+            | "@@" | "∣" | "divides" | "∤" => Some((PREC_COMPARISON, false)),
             "|" => Some((PREC_BITWISE_OR, false)),
             "^" => Some((PREC_BITWISE_XOR, false)),
             "&" => Some((PREC_BITWISE_AND, false)),

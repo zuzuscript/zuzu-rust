@@ -9,6 +9,12 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ### Added
 
+- New divisibility operators: `a ∣ b` (U+2223; ASCII alias `divides`,
+  a new keyword) is a Boolean test that the left operand exactly
+  divides the right; `a ∤ b` (U+2224, no ASCII alias) returns the
+  Number `b mod a`, truthy exactly when the left operand does not
+  divide the right. Both coerce operands to Number and sit at the
+  comparison precedence tier.
 - `for` loops (including postfix `for`) iterate over the characters of a
   String (each a 1-character String) and the bytes of a BinaryString
   (each a 1-byte BinaryString).
