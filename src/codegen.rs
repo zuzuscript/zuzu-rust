@@ -16,14 +16,15 @@ const PREC_COMPARISON: u8 = 8;
 const PREC_BITWISE_OR: u8 = 9;
 const PREC_BITWISE_XOR: u8 = 10;
 const PREC_BITWISE_AND: u8 = 11;
-const PREC_SET: u8 = 12;
-const PREC_CONCAT: u8 = 13;
-const PREC_ADDITIVE: u8 = 14;
-const PREC_MULTIPLICATIVE: u8 = 15;
-const PREC_EXPONENT: u8 = 16;
-const PREC_PREFIX: u8 = 17;
-const PREC_POSTFIX: u8 = 18;
-const PREC_ATOM: u8 = 19;
+const PREC_SHIFT: u8 = 12;
+const PREC_SET: u8 = 13;
+const PREC_CONCAT: u8 = 14;
+const PREC_ADDITIVE: u8 = 15;
+const PREC_MULTIPLICATIVE: u8 = 16;
+const PREC_EXPONENT: u8 = 17;
+const PREC_PREFIX: u8 = 18;
+const PREC_POSTFIX: u8 = 19;
+const PREC_ATOM: u8 = 20;
 
 pub fn render_program(program: &Program) -> String {
     let mut out = String::new();
@@ -998,6 +999,7 @@ fn infix_precedence(operator: &str) -> u8 {
         "|" => PREC_BITWISE_OR,
         "^" => PREC_BITWISE_XOR,
         "&" => PREC_BITWISE_AND,
+        "<<" | "«" | ">>" | "»" => PREC_SHIFT,
         "union" | "⋃" | "intersection" | "⋂" | "\\" | "∖" | "..." => PREC_SET,
         "_" => PREC_CONCAT,
         "+" | "-" => PREC_ADDITIVE,

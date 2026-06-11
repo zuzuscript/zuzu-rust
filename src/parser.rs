@@ -16,6 +16,10 @@ pub struct Parser {
     tokens: Vec<Token>,
     index: usize,
     source_file: Option<String>,
+    // Closers of set literals currently being parsed: ">>" and "»" are
+    // also shift operators, so the innermost pending closer must not be
+    // consumed as an infix operator.
+    pending_set_closers: Vec<&'static str>,
 }
 
 const PREC_ASSIGNMENT: u8 = 1;
@@ -29,12 +33,13 @@ const PREC_COMPARISON: u8 = 8;
 const PREC_BITWISE_OR: u8 = 9;
 const PREC_BITWISE_XOR: u8 = 10;
 const PREC_BITWISE_AND: u8 = 11;
-const PREC_SET: u8 = 12;
-const PREC_CONCAT: u8 = 13;
-const PREC_ADDITIVE: u8 = 14;
-const PREC_MULTIPLICATIVE: u8 = 15;
-const PREC_EXPONENT: u8 = 16;
-const PREC_PREFIX: u8 = 17;
+const PREC_SHIFT: u8 = 12;
+const PREC_SET: u8 = 13;
+const PREC_CONCAT: u8 = 14;
+const PREC_ADDITIVE: u8 = 15;
+const PREC_MULTIPLICATIVE: u8 = 16;
+const PREC_EXPONENT: u8 = 17;
+const PREC_PREFIX: u8 = 18;
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
@@ -42,6 +47,7 @@ impl Parser {
             tokens,
             index: 0,
             source_file: None,
+            pending_set_closers: Vec::new(),
         }
     }
 
@@ -50,6 +56,7 @@ impl Parser {
             tokens,
             index: 0,
             source_file: Some(source_file.into()),
+            pending_set_closers: Vec::new(),
         }
     }
 
@@ -2020,18 +2027,33 @@ impl Parser {
     }
 
     fn parse_expression_list_until_operator(&mut self, close: &str) -> Result<Vec<Expression>> {
-        let mut elements = Vec::new();
-        if !self.check_operator(close) {
-            loop {
-                elements.push(self.parse_expression()?);
-                if !self.match_punct(',') {
-                    break;
-                }
-                if self.check_operator(close) {
-                    break;
+        let suppressed = match close {
+            ">>" => Some(">>"),
+            "»" => Some("»"),
+            _ => None,
+        };
+        if let Some(closer) = suppressed {
+            self.pending_set_closers.push(closer);
+        }
+        let parsed: Result<Vec<Expression>> = (|| {
+            let mut elements = Vec::new();
+            if !self.check_operator(close) {
+                loop {
+                    elements.push(self.parse_expression()?);
+                    if !self.match_punct(',') {
+                        break;
+                    }
+                    if self.check_operator(close) {
+                        break;
+                    }
                 }
             }
+            Ok(elements)
+        })();
+        if suppressed.is_some() {
+            self.pending_set_closers.pop();
         }
+        let elements = parsed?;
         self.expect_operator(close, "Expected collection literal terminator")?;
         Ok(elements)
     }
@@ -2107,6 +2129,13 @@ impl Parser {
 
     fn current_infix_operator(&self) -> Option<(String, u8, bool)> {
         let text = self.current_text();
+        if let Some(closer) = self.pending_set_closers.last() {
+            // Inside << ... >> or « ... » the closer ends the literal
+            // instead of acting as a shift operator.
+            if text == *closer {
+                return None;
+            }
+        }
         let entry = match text.as_str() {
             "or" | "⋁" => Some((PREC_OR, false)),
             "▷" | "|>" => Some((PREC_CHAIN, false)),
@@ -2122,6 +2151,7 @@ impl Parser {
             "|" => Some((PREC_BITWISE_OR, false)),
             "^" => Some((PREC_BITWISE_XOR, false)),
             "&" => Some((PREC_BITWISE_AND, false)),
+            "<<" | "«" | ">>" | "»" => Some((PREC_SHIFT, false)),
             "union" | "⋃" | "intersection" | "⋂" | "\\" | "∖" => Some((PREC_SET, false)),
             "..." => Some((PREC_SET, false)),
             "_" => Some((PREC_CONCAT, false)),

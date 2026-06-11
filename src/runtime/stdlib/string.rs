@@ -30,6 +30,8 @@ pub(super) fn exports() -> HashMap<String, Value> {
         "split",
         "pattern_to_regexp",
         "quotemeta",
+        "to_binary",
+        "to_string",
     ] {
         exports.insert(func.to_owned(), Value::native_function(func.to_owned()));
     }

@@ -22,6 +22,7 @@ mod net_url;
 mod proc;
 mod secure;
 mod string;
+mod string_encode;
 mod task;
 mod time;
 mod tui;
@@ -41,6 +42,7 @@ pub(super) fn load_runtime_supported_module(name: &str) -> Option<HashMap<String
         "std/tui" => Some(tui::exports()),
         "std/string" => Some(string::exports()),
         "std/string/base64" => Some(base64::exports()),
+        "std/string/encode" => Some(string_encode::exports()),
         "std/math" => Some(math::exports()),
         "std/math/bignum" => Some(bignum::exports()),
         "std/proc" => Some(proc::exports()),
@@ -116,6 +118,9 @@ pub(super) fn call_native_function(
         return result;
     }
     if let Some(result) = base64::call(name, &args) {
+        return result;
+    }
+    if let Some(result) = string_encode::call(name, &args) {
         return result;
     }
     if let Some(result) = marshal::call(runtime, name, &args) {

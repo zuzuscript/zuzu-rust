@@ -3279,6 +3279,11 @@ impl Runtime {
                 let rhs = self.eval_expression(right, env)?;
                 self.eval_bitwise(operator, lhs, rhs)
             }
+            "<<" | "«" | ">>" | "»" => {
+                let lhs = self.eval_expression(left, Rc::clone(&env))?;
+                let rhs = self.eval_expression(right, env)?;
+                self.eval_shift(operator, lhs, rhs)
+            }
             "instanceof" => {
                 let lhs = self.eval_expression(left, Rc::clone(&env))?;
                 let rhs = self.eval_expression(right, env)?;
@@ -5893,6 +5898,14 @@ impl Runtime {
                 .into_iter()
                 .map(|(key, _)| Value::String(key))
                 .collect()),
+            Value::String(text) => Ok(text
+                .chars()
+                .map(|ch| Value::String(ch.to_string()))
+                .collect()),
+            Value::BinaryString(bytes) => Ok(bytes
+                .into_iter()
+                .map(|byte| Value::BinaryString(vec![byte]))
+                .collect()),
             Value::Null => Ok(Vec::new()),
             Value::Function(function) => {
                 let mut items = Vec::new();
@@ -6689,6 +6702,66 @@ impl Runtime {
                     _ => unreachable!(),
                 };
                 Ok(Value::Number(value as f64))
+            }
+        }
+    }
+
+    fn eval_shift(&self, operator: &str, lhs: Value, rhs: Value) -> Result<Value> {
+        // BinaryStrings shift as one whole bit string: bits carry across
+        // byte boundaries, the length is preserved, vacated bits are 0.
+        fn shift_bytes(bytes: &[u8], count: u64, left: bool) -> Vec<u8> {
+            let len = bytes.len();
+            if len == 0 || count >= len as u64 * 8 {
+                return vec![0; len];
+            }
+            let byte_shift = (count / 8) as usize;
+            let bit_shift = (count % 8) as u32;
+            let mut out = vec![0u8; len];
+            for (i, slot) in out.iter_mut().enumerate() {
+                let value = if left {
+                    let src = i + byte_shift;
+                    let hi = if src < len { bytes[src] as u16 } else { 0 };
+                    let lo = if src + 1 < len { bytes[src + 1] as u16 } else { 0 };
+                    ((hi << 8 | lo) << bit_shift) >> 8
+                } else {
+                    if i < byte_shift {
+                        continue;
+                    }
+                    let lo = bytes[i - byte_shift] as u16;
+                    let hi = if i > byte_shift {
+                        (bytes[i - byte_shift - 1] as u16) << 8
+                    } else {
+                        0
+                    };
+                    (hi | lo) >> bit_shift
+                };
+                *slot = (value & 0xFF) as u8;
+            }
+            out
+        }
+
+        let left_shift = matches!(operator, "<<" | "«");
+        let count = self.value_to_number(&rhs)?.trunc();
+        if !(count >= 0.0) || !count.is_finite() {
+            return Err(ZuzuRustError::thrown(
+                "shift count must be a non-negative integer",
+            ));
+        }
+        match lhs {
+            Value::BinaryString(bytes) => Ok(Value::BinaryString(shift_bytes(
+                &bytes,
+                count.min(u64::MAX as f64) as u64,
+                left_shift,
+            ))),
+            other => {
+                let value = self.value_to_number(&other)?.trunc();
+                let factor = 2f64.powf(count);
+                let shifted = if left_shift {
+                    value * factor
+                } else {
+                    (value / factor).floor()
+                };
+                Ok(Value::Number(shifted))
             }
         }
     }
@@ -8752,9 +8825,38 @@ impl Value {
             Value::Number(value) => Ok(*value),
             Value::Boolean(true) => Ok(1.0),
             Value::Boolean(false) => Ok(0.0),
-            Value::String(value) => value.parse::<f64>().map_err(|_| {
-                ZuzuRustError::runtime(format!("cannot coerce '{}' to Number", value))
-            }),
+            Value::String(value) => {
+                // Coercion is more permissive than the lexer: radix
+                // prefixes and the exponent marker match either case.
+                let trimmed = value.trim();
+                let unsigned = trimmed.strip_prefix(['+', '-']).unwrap_or(trimmed);
+                let radix = match unsigned.get(..2) {
+                    Some("0x") | Some("0X") => Some(16),
+                    Some("0b") | Some("0B") => Some(2),
+                    Some("0o") | Some("0O") => Some(8),
+                    _ => None,
+                };
+                if let Some(radix) = radix {
+                    return u128::from_str_radix(&unsigned[2..], radix)
+                        .map(|parsed| {
+                            let magnitude = parsed as f64;
+                            if trimmed.starts_with('-') {
+                                -magnitude
+                            } else {
+                                magnitude
+                            }
+                        })
+                        .map_err(|_| {
+                            ZuzuRustError::runtime(format!(
+                                "cannot coerce '{}' to Number",
+                                value
+                            ))
+                        });
+                }
+                trimmed.parse::<f64>().map_err(|_| {
+                    ZuzuRustError::runtime(format!("cannot coerce '{}' to Number", value))
+                })
+            }
             _ => Err(ZuzuRustError::runtime("value cannot be coerced to Number")),
         }
     }

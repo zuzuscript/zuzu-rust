@@ -7,6 +7,31 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ## Unreleased
 
+### Added
+
+- `for` loops (including postfix `for`) iterate over the characters of a
+  String (each a 1-character String) and the bytes of a BinaryString
+  (each a 1-byte BinaryString).
+- Bitshift operators `<<`, `>>`, `«`, `»`. Numbers shift arithmetically
+  (operands truncated to integers; negative shift counts throw).
+  BinaryStrings shift as one whole bit string: bits carry across byte
+  boundaries, length is preserved, vacated bits are zero. Shifts bind
+  tighter than bitwise `&`/`|`/`^` and looser than additive operators;
+  inside a set literal the closing `>>`/`»` still terminates the
+  literal.
+- Numeric literals: uppercase-E exponents (`1E3`, `2.5E-7`), hex
+  (`0x1F`), binary (`0b1111`), and octal (`0o100`) with lowercase
+  prefixes. Lowercase `1e3` and uppercase `0X`/`0B`/`0O` prefixes remain
+  invalid in source, but String-to-Number coercion accepts either case
+  for the exponent marker and radix prefixes.
+- New `std/string/encode` module: `encode(String, encoding)` /
+  `decode(BinaryString, encoding)` with UTF-8, UTF-16, UTF-32, and
+  ISO-8859-1 codecs plus `ENCODING_UTF8`/`ENCODING_UTF16`/
+  `ENCODING_UTF32`/`ENCODING_LATIN` constants. Encoding names match
+  case-insensitively; UTF-16/UTF-32 encode big-endian without a BOM and
+  decode honours a leading BOM.
+- `std/string` exports `to_binary` and `to_string`.
+
 ### Fixed
 
 - A zero-parameter method whose entire body is a bare-identifier return

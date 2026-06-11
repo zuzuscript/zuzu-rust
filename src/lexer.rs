@@ -976,6 +976,27 @@ fn skip_quoted(
 }
 
 fn lex_number(chars: &[char], start: usize, column: usize) -> (String, usize, usize) {
+    // Radix-prefixed integers: 0x… hex, 0b… binary, 0o… octal.
+    // Only lowercase prefixes are part of the language; the token value
+    // is normalised to decimal because later stages parse it as f64.
+    if chars[start] == '0' && start + 2 < chars.len() {
+        let (radix, digit_ok): (u32, fn(char) -> bool) = match chars[start + 1] {
+            'x' => (16, |ch| ch.is_ascii_hexdigit()),
+            'b' => (2, |ch| ch == '0' || ch == '1'),
+            'o' => (8, |ch| ('0'..='7').contains(&ch)),
+            _ => (0, |_| false),
+        };
+        if radix != 0 && digit_ok(chars[start + 2]) {
+            let mut end = start + 2;
+            while end < chars.len() && digit_ok(chars[end]) {
+                end += 1;
+            }
+            let digits: String = chars[start + 2..end].iter().collect();
+            let value = u128::from_str_radix(&digits, radix).unwrap_or(0);
+            return (value.to_string(), end, column + (end - start));
+        }
+    }
+
     let mut end = start + 1;
     let mut end_column = column + 1;
     let mut seen_dot = false;
@@ -996,6 +1017,20 @@ fn lex_number(chars: &[char], start: usize, column: usize) -> (String, usize, us
             continue;
         }
         break;
+    }
+    // Exponent: uppercase E only (lowercase e is not part of the language).
+    if end < chars.len() && chars[end] == 'E' {
+        let mut exp_end = end + 1;
+        if exp_end < chars.len() && (chars[exp_end] == '+' || chars[exp_end] == '-') {
+            exp_end += 1;
+        }
+        if exp_end < chars.len() && chars[exp_end].is_ascii_digit() {
+            while exp_end < chars.len() && chars[exp_end].is_ascii_digit() {
+                exp_end += 1;
+            }
+            end_column += exp_end - end;
+            end = exp_end;
+        }
     }
     (chars[start..end].iter().collect(), end, end_column)
 }
