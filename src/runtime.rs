@@ -8879,8 +8879,8 @@ impl Value {
         match self {
             Value::Shared(value) => value.borrow().render(),
             Value::Null => "".to_owned(),
-            Value::Boolean(true) => "1".to_owned(),
-            Value::Boolean(false) => "0".to_owned(),
+            Value::Boolean(true) => "true".to_owned(),
+            Value::Boolean(false) => "false".to_owned(),
             Value::Number(value) => render_number(*value),
             Value::String(value) => value.clone(),
             Value::BinaryString(bytes) => String::from_utf8_lossy(bytes).into_owned(),

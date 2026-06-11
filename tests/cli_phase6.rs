@@ -363,7 +363,7 @@ fn cli_deny_policy_updates_system_flags_and_try_imports() {
     let output = run_zuzu(&["--deny=fs", &script_arg], &repo_root());
 
     assert!(output.status.success());
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "1\n1\n");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "true\ntrue\n");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }
 
@@ -402,13 +402,13 @@ fn cli_deny_gui_updates_system_flag_and_rejects_gui_objects() {
     let flag_arg = flag_script.to_string_lossy().into_owned();
     let default_output = run_zuzu(&[&flag_arg], &repo_root());
     assert!(default_output.status.success());
-    assert_eq!(String::from_utf8_lossy(&default_output.stdout), "0\n");
+    assert_eq!(String::from_utf8_lossy(&default_output.stdout), "false\n");
     assert_eq!(String::from_utf8_lossy(&default_output.stderr), "");
 
     let flag_output = run_zuzu(&["--deny=gui", &flag_arg], &repo_root());
 
     assert!(flag_output.status.success());
-    assert_eq!(String::from_utf8_lossy(&flag_output.stdout), "1\n");
+    assert_eq!(String::from_utf8_lossy(&flag_output.stdout), "true\n");
     assert_eq!(String::from_utf8_lossy(&flag_output.stderr), "");
 
     let import_script = dir.join("import.zzs");
@@ -443,7 +443,7 @@ fn cli_js_capability_is_always_denied_and_hides_javascript_module() {
     let flag_arg = flag_script.to_string_lossy().into_owned();
     let flag_output = run_zuzu(&[&flag_arg], &repo_root());
     assert!(flag_output.status.success());
-    assert_eq!(String::from_utf8_lossy(&flag_output.stdout), "1\n");
+    assert_eq!(String::from_utf8_lossy(&flag_output.stdout), "true\n");
     assert_eq!(String::from_utf8_lossy(&flag_output.stderr), "");
 
     let import_script = dir.join("import.zzs");
@@ -486,7 +486,7 @@ fn cli_deny_gui_allows_dialogue_tui_fallbacks() {
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Hi\n1\nAda\nx.txt\n1\n"
+        "Hi\ntrue\nAda\nx.txt\ntrue\n"
     );
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
 }

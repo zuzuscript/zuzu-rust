@@ -7,6 +7,12 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ## Unreleased
 
+### Changed
+
+- Booleans render as `true`/`false` (in `say`, string interpolation, and
+  inside rendered collections) instead of `1`/`0`, matching zuzu-perl.
+  String coercion via operators already used `true`/`false`.
+
 ### Added
 
 - New divisibility operators: `a ∣ b` (U+2223; ASCII alias `divides`,
