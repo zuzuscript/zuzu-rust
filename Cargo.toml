@@ -50,6 +50,7 @@ p256 = { version = "0.13.2", features = ["ecdsa", "pkcs8", "pem"] }
 p384 = { version = "0.13.1", features = ["ecdsa", "pkcs8", "pem"] }
 x25519-dalek = { version = "2.0.1", features = ["static_secrets", "getrandom"] }
 openssl = "0.10.79"
+std-uritemplate = "2.0.10"
 
 [lib]
 name = "zuzu_rust"

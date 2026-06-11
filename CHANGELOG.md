@@ -15,6 +15,12 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ### Added
 
+- std/net/url's `fill_template` is now a complete RFC 6570 URI
+  Template implementation (all operators, `:N` prefix and `*` explode
+  modifiers, list and associative values), implemented with the
+  std-uritemplate crate and validated against the official URI
+  Template test suite. Invalid templates throw; Dict keys expand in
+  sorted order.
 - New divisibility operators: `a ∣ b` (U+2223; ASCII alias `divides`,
   a new keyword) is a Boolean test that the left operand exactly
   divides the right; `a ∤ b` (U+2224, no ASCII alias) returns the

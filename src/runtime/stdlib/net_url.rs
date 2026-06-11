@@ -147,47 +147,75 @@ fn fill_template(runtime: &Runtime, args: &[Value]) -> Result<Value> {
         ));
     }
     let template = runtime.render_value(&args[0])?;
-    let values = match &args[1] {
-        Value::Dict(map) => map.clone(),
-        Value::PairList(items) => items.iter().cloned().collect(),
-        _ => HashMap::new(),
-    };
-    let mut out = String::new();
-    let mut rest = template.as_str();
-    while let Some(start) = rest.find('{') {
-        out.push_str(&rest[..start]);
-        let remainder = &rest[start + 1..];
-        let Some(end) = remainder.find('}') else {
-            return Err(ZuzuRustError::runtime("invalid URL template"));
-        };
-        let token = &remainder[..end];
-        if let Some(names) = token.strip_prefix('?') {
-            let mut pairs = Vec::new();
-            for name in names
-                .split(',')
-                .map(str::trim)
-                .filter(|name| !name.is_empty())
-            {
-                if let Some(value) = values.get(name) {
-                    let rendered = runtime.render_value(value)?;
-                    pairs.push(format!(
-                        "{}={}",
-                        percent_encode(name),
-                        percent_encode(&rendered)
-                    ));
+    let mut substitutions = HashMap::new();
+    match &args[1] {
+        Value::Dict(map) | Value::SystemDict(map) => {
+            for (key, value) in map {
+                if let Some(converted) = template_value(runtime, value)? {
+                    substitutions.insert(key.clone(), converted);
                 }
             }
-            if !pairs.is_empty() {
-                out.push('?');
-                out.push_str(&pairs.join("&"));
-            }
-        } else if let Some(value) = values.get(token) {
-            out.push_str(&percent_encode(&runtime.render_value(value)?));
         }
-        rest = &remainder[end + 1..];
+        Value::PairList(items) => {
+            for (key, value) in items {
+                if let Some(converted) = template_value(runtime, value)? {
+                    substitutions.insert(key.clone(), converted);
+                }
+            }
+        }
+        _ => {}
     }
-    out.push_str(rest);
-    Ok(Value::String(out))
+    stduritemplate::expand(&template, &substitutions)
+        .map(Value::String)
+        .map_err(|_| {
+            ZuzuRustError::thrown(format!("invalid URL template: {template}"))
+        })
+}
+
+// RFC 6570 substitution values: everything scalar is rendered to a
+// String (using the runtime's standard rendering) so all runtimes
+// expand byte-identically; Dict keys are sorted for determinism while
+// PairLists keep their order.
+fn template_value(
+    runtime: &Runtime,
+    value: &Value,
+) -> Result<Option<stduritemplate::Value>> {
+    let value = runtime.deref_value(value)?;
+    Ok(match &value {
+        Value::Null => None,
+        Value::Array(items) | Value::SystemArray(items) => {
+            let mut list = Vec::with_capacity(items.len());
+            for item in items {
+                list.push(stduritemplate::Value::String(
+                    runtime.render_value(item)?,
+                ));
+            }
+            Some(stduritemplate::Value::List(list))
+        }
+        Value::Dict(map) | Value::SystemDict(map) => {
+            let mut keys: Vec<_> = map.keys().cloned().collect();
+            keys.sort();
+            let mut pairs = Vec::with_capacity(keys.len());
+            for key in keys {
+                pairs.push((
+                    key.clone(),
+                    stduritemplate::Value::String(runtime.render_value(&map[&key])?),
+                ));
+            }
+            Some(stduritemplate::Value::Map(pairs))
+        }
+        Value::PairList(items) => {
+            let mut pairs = Vec::with_capacity(items.len());
+            for (key, item) in items {
+                pairs.push((
+                    key.clone(),
+                    stduritemplate::Value::String(runtime.render_value(item)?),
+                ));
+            }
+            Some(stduritemplate::Value::Map(pairs))
+        }
+        other => Some(stduritemplate::Value::String(runtime.render_value(other)?)),
+    })
 }
 
 fn parse_query_params(query: &str) -> HashMap<String, Value> {
