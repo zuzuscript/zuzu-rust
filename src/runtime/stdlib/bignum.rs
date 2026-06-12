@@ -82,7 +82,7 @@ pub(super) fn call_object_method(
 		"bmul" => binary_num(value, args, |left, right| left * right, Some(false)),
 		"bdiv" => binary_num(value, args, |left, right| left / right, None),
 		"bmod" => binary_num(value, args, |left, right| left % right, None),
-		"bpow" => Ok(pow_bignum(value, args)),
+		"bpow" => Ok(pow_bignum(value, &text, is_int, args)),
 		"to_hex" => Ok(Value::String(to_hex(&value, &text))),
 		"to_dec" => Ok(to_dec_value(&value, is_int, &text)),
 		"to_String" => Ok(Value::String(trim_decimal(&text))),
@@ -361,16 +361,19 @@ fn parse_decimal_value(value: &Value) -> Option<BigDecimal> {
 	}
 }
 
-fn pow_bignum(left: BigDecimal, args: &[Value]) -> Value {
+fn pow_bignum(left: BigDecimal, left_text: &str, is_left_integer: bool, args: &[Value]) -> Value {
 	let right = args
 		.first()
 		.map(coerce_other)
 		.transpose()
 		.unwrap_or_else(|_| Ok(BigDecimal::zero()))
 		.unwrap_or_else(BigDecimal::zero);
-	if is_integer_text(&make_decimal_text(&right)) {
-		if let Some(exp) = right.to_u64() {
-			return make_bignum(integer_pow(left, exp), is_integer_text(&make_decimal_text(&left)));
+	let right_text = make_decimal_text(&right);
+	if is_left_integer && is_integer_text(&right_text) {
+		if let Ok(exp) = right_text.parse::<u64>() {
+			if let Ok(base) = left_text.parse::<BigInt>() {
+				return make_bignum(BigDecimal::from(integer_pow(base, exp)), true);
+			}
 		}
 	}
 
@@ -382,8 +385,8 @@ fn is_integer_text(text: &str) -> bool {
 	!has_fractional_part(text)
 }
 
-fn integer_pow(mut base: BigDecimal, mut exp: u64) -> BigDecimal {
-	let mut result = BigDecimal::from(1_i64);
+fn integer_pow(mut base: BigInt, mut exp: u64) -> BigInt {
+	let mut result = BigInt::from(1_i64);
 	while exp > 0 {
 		if (exp & 1) == 1 {
 			result *= base.clone();
