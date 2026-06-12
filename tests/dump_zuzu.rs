@@ -124,7 +124,7 @@ fn codegen_round_trips_representative_program() {
         let value with get, set := 0;
 
         method inc () {
-            self.value++;
+            self{value}++;
             return self.value;
         }
     }
