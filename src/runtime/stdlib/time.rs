@@ -484,7 +484,7 @@ fn call_time_method(
         "year" => Ok(Value::Number(parts.year as f64)),
         "yy" => Ok(Value::String(format!("{:02}", parts.year % 100))),
         "day_of_week" => Ok(Value::Number(local_weekday_number(&parts)? as f64)),
-        "day" => Ok(Value::String(local_weekday_abbr(&parts).to_owned())),
+        "day" => Ok(Value::String(local_weekday_abbr(&parts)?)),
         "day_of_year" => Ok(Value::Number(local_day_of_year(&parts)? as f64)),
         "month_last_day" => Ok(Value::Number(local_month_last_day(&parts)? as f64)),
         "hms" => {
@@ -505,31 +505,30 @@ fn call_time_method(
             let separator = optional_text_arg(runtime, name, args, "-")?;
             Ok(Value::String(format!(
                 "{:02}{}{:02}{}{:04}",
-                parts.month,
-                separator,
-                parts.day,
-                separator,
-                parts.year,
+                parts.month, separator, parts.day, separator, parts.year,
             )))
         }
         "dmy" => {
             let separator = optional_text_arg(runtime, name, args, "-")?;
             Ok(Value::String(format!(
                 "{:02}{}{:02}{}{:04}",
-                parts.day,
-                separator,
-                parts.month,
-                separator,
-                parts.year,
+                parts.day, separator, parts.month, separator, parts.year,
             )))
         }
-        "date" => Ok(Value::String(format!("{:04}-{:02}-{:02}", parts.year, parts.month, parts.day))),
-        "time" => Ok(Value::String(format!("{:02}:{:02}:{:02}", parts.hour, parts.minute, parts.second))),
+        "date" => Ok(Value::String(format!(
+            "{:04}-{:02}-{:02}",
+            parts.year, parts.month, parts.day
+        ))),
+        "time" => Ok(Value::String(format!(
+            "{:02}:{:02}:{:02}",
+            parts.hour, parts.minute, parts.second
+        ))),
         "cdate" => {
             let day = local_day_of_month_for_display(&parts)?;
+            let weekday = local_weekday_abbr(&parts)?;
             Ok(Value::String(format!(
                 "{} {} {:>2} {:02}:{:02}:{:02} {}",
-                local_weekday_abbr(&parts),
+                weekday,
                 month_abbr(parts.month),
                 day,
                 parts.hour,
@@ -714,15 +713,9 @@ fn julian_day(parts: &WallParts) -> f64 {
     let a = (14 - month) / 12;
     let y = year + 4800 - a;
     let m = month + 12 * a - 3;
-    let day_number = day
-        + (153 * m + 2) / 5
-        + 365 * y
-        + y / 4
-        - y / 100
-        + y / 400
-        - 32045;
-    let day_time = (parts.hour as f64 * 3600.0 + parts.minute as f64 * 60.0 + parts.second as f64)
-        / 86_400.0;
+    let day_number = day + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32045;
+    let day_time =
+        (parts.hour as f64 * 3600.0 + parts.minute as f64 * 60.0 + parts.second as f64) / 86_400.0;
     day_number as f64 + day_time - 0.5
 }
 

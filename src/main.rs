@@ -256,7 +256,7 @@ fn run() -> Result<()> {
     };
 
     if dump_ast || dump_zuzu || lint_mode {
-    let source_file = script_path.as_ref().map(|path| path.to_owned());
+        let source_file = script_path.as_ref().map(|path| path.to_owned());
         let options = if lint_mode {
             ParseOptions::new(run_sema, infer_types, OptimizationOptions::disabled())
         } else {

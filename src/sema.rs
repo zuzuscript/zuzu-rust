@@ -93,7 +93,11 @@ impl LintCollector {
     fn collect_statement(&mut self, statement: &Statement, warnings: &mut Vec<String>) {
         match statement {
             Statement::Block(node) => {
-                self.collect_scoped_block(node.statements.as_slice(), node.needs_lexical_scope, warnings);
+                self.collect_scoped_block(
+                    node.statements.as_slice(),
+                    node.needs_lexical_scope,
+                    warnings,
+                );
             }
             Statement::VariableDeclaration(node) => {
                 if node.kind == "let" {
@@ -151,14 +155,24 @@ impl LintCollector {
                                     self.collect_expression(default_value, warnings);
                                 }
                             }
-                            self.collect_scoped_block(method.body.statements.as_slice(), true, warnings);
+                            self.collect_scoped_block(
+                                method.body.statements.as_slice(),
+                                true,
+                                warnings,
+                            );
                             self.exit_callable_scope();
                         }
                         ClassMember::Class(class_decl) => {
-                            self.collect_statement(&Statement::ClassDeclaration(class_decl.clone()), warnings);
+                            self.collect_statement(
+                                &Statement::ClassDeclaration(class_decl.clone()),
+                                warnings,
+                            );
                         }
                         ClassMember::Trait(trait_decl) => {
-                            self.collect_statement(&Statement::TraitDeclaration(trait_decl.clone()), warnings);
+                            self.collect_statement(
+                                &Statement::TraitDeclaration(trait_decl.clone()),
+                                warnings,
+                            );
                         }
                     }
                 }
@@ -173,7 +187,11 @@ impl LintCollector {
                                 self.collect_expression(default_value, warnings);
                             }
                         }
-                        self.collect_scoped_block(method.body.statements.as_slice(), true, warnings);
+                        self.collect_scoped_block(
+                            method.body.statements.as_slice(),
+                            true,
+                            warnings,
+                        );
                         self.exit_callable_scope();
                     }
                 }
@@ -263,7 +281,8 @@ impl LintCollector {
                     self.collect_expression(element, warnings);
                 }
             }
-            Expression::DictLiteral { entries, .. } | Expression::PairListLiteral { entries, .. } => {
+            Expression::DictLiteral { entries, .. }
+            | Expression::PairListLiteral { entries, .. } => {
                 for entry in entries {
                     collect_dict_key_warnings(&entry.key, warnings);
                     self.collect_expression(&entry.value, warnings);
@@ -277,9 +296,7 @@ impl LintCollector {
                 }
             }
             Expression::Unary {
-                operator,
-                argument,
-                ..
+                operator, argument, ..
             } => {
                 if operator == "++" || operator == "--" {
                     self.record_reassignment_on_identifier(argument.as_ref());
@@ -314,14 +331,14 @@ impl LintCollector {
                 self.collect_expression(left, warnings);
                 self.collect_expression(right, warnings);
             }
-            Expression::Assignment {
-                left, right, ..
-            } => {
+            Expression::Assignment { left, right, .. } => {
                 self.record_reassignment_on_identifier(left.as_ref());
                 self.collect_expression(left, warnings);
                 self.collect_expression(right, warnings);
             }
-            Expression::PostfixUpdate { operator, argument, .. } => {
+            Expression::PostfixUpdate {
+                operator, argument, ..
+            } => {
                 if operator == "++" || operator == "--" {
                     self.record_reassignment_on_identifier(argument.as_ref());
                 }
@@ -338,9 +355,7 @@ impl LintCollector {
                 self.collect_expression(alternate, warnings);
             }
             Expression::Call {
-                callee,
-                arguments,
-                ..
+                callee, arguments, ..
             } => {
                 self.collect_expression(callee, warnings);
                 self.collect_call_argument_expressions(arguments, warnings);
@@ -363,10 +378,7 @@ impl LintCollector {
                 self.collect_expression(index, warnings);
             }
             Expression::Slice {
-                object,
-                start,
-                end,
-                ..
+                object, start, end, ..
             } => {
                 self.collect_expression(object, warnings);
                 if let Some(start) = start {
@@ -381,10 +393,7 @@ impl LintCollector {
                 collect_dict_key_warnings(key, warnings);
             }
             Expression::Lambda {
-                line,
-                params,
-                body,
-                ..
+                line, params, body, ..
             } => {
                 let context = format!("lambda at line {line}");
                 self.enter_callable_scope(&context);
@@ -397,10 +406,7 @@ impl LintCollector {
                 self.exit_callable_scope();
             }
             Expression::FunctionExpression {
-                line,
-                params,
-                body,
-                ..
+                line, params, body, ..
             } => {
                 let context = format!("function expression at line {line}");
                 self.enter_callable_scope(&context);
@@ -518,10 +524,13 @@ impl LintCollector {
         self.scopes
             .last_mut()
             .expect("scope stack should not be empty")
-            .insert(name.to_owned(), LintLetBinding {
-                line,
-                is_reassigned: false,
-            });
+            .insert(
+                name.to_owned(),
+                LintLetBinding {
+                    line,
+                    is_reassigned: false,
+                },
+            );
     }
 
     fn record_reassignment_on_identifier(&mut self, expression: &Expression) {
@@ -681,9 +690,7 @@ fn collect_if_chain(node: &IfStatement) -> Vec<&IfStatement> {
     loop {
         chain.push(current);
         match &current.alternate {
-            Some(statement)
-                if matches!(statement.as_ref(), Statement::IfStatement(_)) =>
-            {
+            Some(statement) if matches!(statement.as_ref(), Statement::IfStatement(_)) => {
                 if let Statement::IfStatement(next) = statement.as_ref() {
                     current = next;
                 }
@@ -739,21 +746,72 @@ fn check_if_chain_switch_warning(chain: &[&IfStatement]) -> Option<String> {
 fn is_switch_comparator(operator: &str) -> bool {
     matches!(
         operator,
-        "==" | "≡" | "!=" | "≢" | "=" | "≠" | ">" | "<" | ">=" | "≤" | "<=" | "≥" | "lt"
-            | "gt" | "le" | "ge" | "eq" | "ne" | "lti" | "gti" | "lei" | "gei" | "nei"
+        "==" | "≡"
+            | "!="
+            | "≢"
+            | "="
+            | "≠"
+            | ">"
+            | "<"
+            | ">="
+            | "≤"
+            | "<="
+            | "≥"
+            | "lt"
+            | "gt"
+            | "le"
+            | "ge"
+            | "eq"
+            | "ne"
+            | "lti"
+            | "gti"
+            | "lei"
+            | "gei"
+            | "nei"
     )
 }
 
 fn expressions_structurally_equal(left: &Expression, right: &Expression) -> bool {
     match (left, right) {
         (Expression::Identifier { name: a, .. }, Expression::Identifier { name: b, .. }) => a == b,
-        (Expression::MemberAccess { object: a_object, member: a_member, .. }, Expression::MemberAccess { object: b_object, member: b_member, .. }) => {
-            a_member == b_member && expressions_structurally_equal(a_object, b_object)
-        }
-        (Expression::Unary { operator: a_operator, argument: a_argument, .. }, Expression::Unary { operator: b_operator, argument: b_argument, .. }) => {
-            a_operator == b_operator && expressions_structurally_equal(a_argument, b_argument)
-        }
-        (Expression::Binary { operator: a_operator, left: a_left, right: a_right, .. }, Expression::Binary { operator: b_operator, left: b_left, right: b_right, .. }) => {
+        (
+            Expression::MemberAccess {
+                object: a_object,
+                member: a_member,
+                ..
+            },
+            Expression::MemberAccess {
+                object: b_object,
+                member: b_member,
+                ..
+            },
+        ) => a_member == b_member && expressions_structurally_equal(a_object, b_object),
+        (
+            Expression::Unary {
+                operator: a_operator,
+                argument: a_argument,
+                ..
+            },
+            Expression::Unary {
+                operator: b_operator,
+                argument: b_argument,
+                ..
+            },
+        ) => a_operator == b_operator && expressions_structurally_equal(a_argument, b_argument),
+        (
+            Expression::Binary {
+                operator: a_operator,
+                left: a_left,
+                right: a_right,
+                ..
+            },
+            Expression::Binary {
+                operator: b_operator,
+                left: b_left,
+                right: b_right,
+                ..
+            },
+        ) => {
             a_operator == b_operator
                 && expressions_structurally_equal(a_left, b_left)
                 && expressions_structurally_equal(a_right, b_right)

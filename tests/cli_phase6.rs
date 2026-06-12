@@ -592,13 +592,10 @@ fn cli_lint_reports_style_warning_suggestions() {
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout), "");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains(
-        "prefer 'instanceof' for runtime type checks"
-    ));
+    assert!(stderr.contains("prefer 'instanceof' for runtime type checks"));
     assert!(stderr.contains("can be declared with const"));
-    assert!(stderr.contains(
-        "multiple else-if comparisons over the same term can be expressed as a switch"
-    ));
+    assert!(stderr
+        .contains("multiple else-if comparisons over the same term can be expressed as a switch"));
     assert!(stderr.contains(
         "comparing to null with '=' is fragile; use a type-aware null comparison operator"
     ));

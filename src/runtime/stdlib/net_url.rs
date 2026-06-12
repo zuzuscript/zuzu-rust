@@ -167,28 +167,21 @@ fn fill_template(runtime: &Runtime, args: &[Value]) -> Result<Value> {
     }
     stduritemplate::expand(&template, &substitutions)
         .map(Value::String)
-        .map_err(|_| {
-            ZuzuRustError::thrown(format!("invalid URL template: {template}"))
-        })
+        .map_err(|_| ZuzuRustError::thrown(format!("invalid URL template: {template}")))
 }
 
 // RFC 6570 substitution values: everything scalar is rendered to a
 // String (using the runtime's standard rendering) so all runtimes
 // expand byte-identically; Dict keys are sorted for determinism while
 // PairLists keep their order.
-fn template_value(
-    runtime: &Runtime,
-    value: &Value,
-) -> Result<Option<stduritemplate::Value>> {
+fn template_value(runtime: &Runtime, value: &Value) -> Result<Option<stduritemplate::Value>> {
     let value = runtime.deref_value(value)?;
     Ok(match &value {
         Value::Null => None,
         Value::Array(items) | Value::SystemArray(items) => {
             let mut list = Vec::with_capacity(items.len());
             for item in items {
-                list.push(stduritemplate::Value::String(
-                    runtime.render_value(item)?,
-                ));
+                list.push(stduritemplate::Value::String(runtime.render_value(item)?));
             }
             Some(stduritemplate::Value::List(list))
         }

@@ -21,7 +21,10 @@ pub(super) fn exports() -> HashMap<String, Value> {
         "decode".to_owned(),
         Value::native_function("string_encode__decode".to_owned()),
     );
-    exports.insert("ENCODING_UTF8".to_owned(), Value::String("UTF-8".to_owned()));
+    exports.insert(
+        "ENCODING_UTF8".to_owned(),
+        Value::String("UTF-8".to_owned()),
+    );
     exports.insert(
         "ENCODING_UTF16".to_owned(),
         Value::String("UTF-16".to_owned()),
@@ -139,9 +142,8 @@ fn decode(args: &[Value]) -> Result<Value> {
     };
     let codec = encoding_arg(args, 1, "decode")?;
     let text = match codec {
-        Codec::Utf8 => String::from_utf8(bytes.clone()).map_err(|_| {
-            ZuzuRustError::thrown("Invalid UTF-8 in BinaryString")
-        })?,
+        Codec::Utf8 => String::from_utf8(bytes.clone())
+            .map_err(|_| ZuzuRustError::thrown("Invalid UTF-8 in BinaryString"))?,
         Codec::Utf16 => decode_utf16_bytes(bytes)?,
         Codec::Utf32 => decode_utf32_bytes(bytes)?,
         Codec::Latin1 => bytes.iter().map(|&byte| byte as char).collect(),
@@ -170,8 +172,7 @@ fn decode_utf16_bytes(bytes: &[u8]) -> Result<String> {
             }
         })
         .collect();
-    String::from_utf16(&units)
-        .map_err(|_| ZuzuRustError::thrown("Invalid UTF-16 in BinaryString"))
+    String::from_utf16(&units).map_err(|_| ZuzuRustError::thrown("Invalid UTF-16 in BinaryString"))
 }
 
 fn decode_utf32_bytes(bytes: &[u8]) -> Result<String> {
@@ -192,9 +193,8 @@ fn decode_utf32_bytes(bytes: &[u8]) -> Result<String> {
         } else {
             u32::from_le_bytes([quad[0], quad[1], quad[2], quad[3]])
         };
-        let ch = char::from_u32(code).ok_or_else(|| {
-            ZuzuRustError::thrown("Invalid UTF-32 in BinaryString")
-        })?;
+        let ch = char::from_u32(code)
+            .ok_or_else(|| ZuzuRustError::thrown("Invalid UTF-32 in BinaryString"))?;
         out.push(ch);
     }
     Ok(out)

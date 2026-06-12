@@ -994,9 +994,7 @@ fn infix_precedence(operator: &str) -> u8 {
         | "gt" | "ge" | "lt" | "le" | "cmp" | "eqi" | "nei" | "gti" | "gei" | "lti" | "lei"
         | "cmpi" | "in" | "∈" | "∉" | "subsetof" | "⊂" | "supersetof" | "⊃" | "equivalentof"
         | "⊂⊃" | "instanceof" | "does" | "can" | "~" | "->" | "@" | "@?" | "@@" | "∣"
-        | "divides" | "∤" => {
-            PREC_COMPARISON
-        }
+        | "divides" | "∤" => PREC_COMPARISON,
         "|" => PREC_BITWISE_OR,
         "^" => PREC_BITWISE_XOR,
         "&" => PREC_BITWISE_AND,

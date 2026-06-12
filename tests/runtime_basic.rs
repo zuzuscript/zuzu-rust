@@ -3016,7 +3016,11 @@ fn std_time_methods_are_available_for_Time() {
         )
         .expect("Time methods should all run");
 
-    assert!(!output.stdout.contains("not ok"), "got failing TAP:\n{}", output.stdout);
+    assert!(
+        !output.stdout.contains("not ok"),
+        "got failing TAP:\n{}",
+        output.stdout
+    );
     assert_eq!(output.stderr, "");
 }
 

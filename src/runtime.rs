@@ -6732,7 +6732,11 @@ impl Runtime {
                 let value = if left {
                     let src = i + byte_shift;
                     let hi = if src < len { bytes[src] as u16 } else { 0 };
-                    let lo = if src + 1 < len { bytes[src + 1] as u16 } else { 0 };
+                    let lo = if src + 1 < len {
+                        bytes[src + 1] as u16
+                    } else {
+                        0
+                    };
                     ((hi << 8 | lo) << bit_shift) >> 8
                 } else {
                     if i < byte_shift {
@@ -8858,10 +8862,7 @@ impl Value {
                             }
                         })
                         .map_err(|_| {
-                            ZuzuRustError::runtime(format!(
-                                "cannot coerce '{}' to Number",
-                                value
-                            ))
+                            ZuzuRustError::runtime(format!("cannot coerce '{}' to Number", value))
                         });
                 }
                 trimmed.parse::<f64>().map_err(|_| {
