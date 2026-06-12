@@ -828,10 +828,10 @@ fn rejects_assignment_to_const_binding() {
 
 #[test]
 fn rejects_invalid_update_target() {
-	let err = parse_program("++( a + b );").expect_err("invalid update target should fail");
-	let text = err.to_string();
-	assert!(text.contains("parse error"));
-	assert!(text.contains("invalid target for unary operator '++'"));
+    let err = parse_program("++( a + b );").expect_err("invalid update target should fail");
+    let text = err.to_string();
+    assert!(text.contains("parse error"));
+    assert!(text.contains("invalid target for unary operator '++'"));
 }
 
 #[test]

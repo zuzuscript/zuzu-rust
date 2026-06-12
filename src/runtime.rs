@@ -2826,26 +2826,30 @@ impl Runtime {
                         .find(|(entry_key, _)| entry_key == &key)
                         .map(|(_, value)| value.clone())
                         .unwrap_or(Value::Null)),
-                    Value::Object(object) => {
-                        if let Some(value) = object.borrow().fields.get(&key).cloned() {
-                            return self.deref_value(&value);
-                        }
-                        Ok(self
-                            .find_method(&object.borrow().class, &key)
-                            .and_then(|_| {
-                                self.marshal_bind_method(Value::Object(Rc::clone(&object)), &key)
+                    Value::Object(object) => Ok(object
+                        .borrow()
+                        .fields
+                        .get(&key)
+                        .cloned()
+                        .or_else(|| {
+                            self.find_method(&object.borrow().class, &key)
+                                .and_then(|_| {
+                                    self.marshal_bind_method(
+                                        Value::Object(Rc::clone(&object)),
+                                        &key,
+                                    )
                                     .ok()
-                            })
-                            .or_else(|| {
-                                object
-                                    .borrow()
-                                    .class
-                                    .nested_classes
-                                    .get(&key)
-                                    .map(|class| Value::UserClass(Rc::clone(class)))
-                            })
-                            .unwrap_or(Value::Null))
-                    }
+                                })
+                        })
+                        .or_else(|| {
+                            object
+                                .borrow()
+                                .class
+                                .nested_classes
+                                .get(&key)
+                                .map(|class| Value::UserClass(Rc::clone(class)))
+                        })
+                        .unwrap_or(Value::Null)),
                     Value::UserClass(class) => Ok(class
                         .methods
                         .get(&key)
@@ -3655,7 +3659,8 @@ impl Runtime {
             }
             Expression::DictAccess { object, key, .. } => {
                 let current = self.eval_expression(target, Rc::clone(&env))?;
-                let updated = update(current)?;
+                let current_value = self.deref_value(&current)?;
+                let updated = update(current_value)?;
                 self.assign_dict_target(object, key, updated, false, env)
             }
             Expression::Slice {
