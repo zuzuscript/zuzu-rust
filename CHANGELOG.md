@@ -65,6 +65,10 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
   closing a longstanding bug report.
 - Added runtime regression coverage for `Time` instance method availability in
   [runtime_basic.rs](tests/runtime_basic.rs).
+- BigNum arithmetic now uses arbitrary-precision decimal math instead of `f64`,
+  so `BigNum.bpow` can produce large integer results like `10 ** 1000`
+  instead of `inf`. Added regression coverage for large-exponent `bpow` in
+  [stdlib/tests/std/math/bignum.zzs](stdlib/tests/std/math/bignum.zzs).
 
 ## 0.3.0 - 2026-06-10
 
