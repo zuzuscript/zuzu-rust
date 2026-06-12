@@ -69,6 +69,9 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
   so `BigNum.bpow` can produce large integer results like `10 ** 1000`
   instead of `inf`. Added regression coverage for large-exponent `bpow` in
   [stdlib/tests/std/math/bignum.zzs](stdlib/tests/std/math/bignum.zzs).
+- Updated runtime parity notes for `std/math/bignum` so cross-runtime test
+  expectations (including `zuzu-js` BigNum method-calling behaviour and
+  large-exponent checks) remain documented in lockstep.
 
 ## 0.3.0 - 2026-06-10
 
