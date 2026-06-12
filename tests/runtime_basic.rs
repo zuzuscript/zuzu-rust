@@ -2975,7 +2975,7 @@ fn std_marshal_round_trips_phase25_data_graphs() {
 }
 
 #[test]
-fn std_time_methods_are_available_for_Time() {
+fn std_time_methods_are_available_for_time() {
     let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);
 
