@@ -52,6 +52,9 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ### Fixed
 
+- `std/math/bignum` now returns String values from `BigNum.to_dec` and
+  `BigNum.to_String` consistently; use `BigNum.to_Number` for numeric
+  conversion.
 - A zero-parameter method whose entire body is a bare-identifier return
   (or a lone bare-identifier statement) was short-circuited as a trivial
   field getter even when the identifier named a module-level global, so

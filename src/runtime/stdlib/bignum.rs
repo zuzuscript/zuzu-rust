@@ -358,16 +358,8 @@ fn to_hex(value: &BigDecimal, text: &str) -> String {
     }
 }
 
-fn to_dec_value(value: &BigDecimal, is_int: bool, text: &str) -> Value {
-    if is_int {
-        if let Some(number) = value.to_f64() {
-            Value::Number(number)
-        } else {
-            Value::String(trim_decimal(text))
-        }
-    } else {
-        Value::String(trim_decimal(text))
-    }
+fn to_dec_value(_value: &BigDecimal, _is_int: bool, text: &str) -> Value {
+    Value::String(trim_decimal(text))
 }
 
 fn parse_decimal_value(value: &Value) -> Option<BigDecimal> {
