@@ -58,6 +58,13 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
   `return SOME_GLOBAL;` from a method silently returned Null. The fast
   path now only applies when the identifier really is a field of the
   object.
+- `Time` now restores missing `std/time` instance methods (`yy`, `day_of_week`,
+  `day_of_year`, `month_last_day`, `hms`, `ymd`, `mdy`, `dmy`, `date`,
+  `time`, `cdate`, `tzoffset`, `is_leap_year`, `week`, `week_year`,
+  `julian_day`) and aligns weekday/month/day formatting with `zuzu-perl`,
+  closing a longstanding bug report.
+- Added runtime regression coverage for `Time` instance method availability in
+  [runtime_basic.rs](tests/runtime_basic.rs).
 
 ## 0.3.0 - 2026-06-10
 
