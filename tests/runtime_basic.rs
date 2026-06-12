@@ -2975,6 +2975,52 @@ fn std_marshal_round_trips_phase25_data_graphs() {
 }
 
 #[test]
+fn std_time_methods_are_available_for_Time() {
+    let repo_root = repo_root();
+    let runtime = Runtime::from_repo_root(&repo_root);
+
+    let output = runtime
+        .run_script_source(
+            r#"
+            from std/time import Time;
+            from test/more import *;
+
+            let t := new Time( 0, timezone: 'UTC' );
+            is( t.sec(), 0, "sec" );
+            is( t.min(), 0, "min" );
+            is( t.hour(), 0, "hour" );
+            is( t.day_of_month(), 1, "day_of_month" );
+            is( t.mon(), 1, "mon" );
+            is( t.month(), "Jan", "month" );
+            is( t.year(), 1970, "year" );
+            is( t.yy(), "70", "yy" );
+            is( t.day_of_week(), 4, "day_of_week" );
+            is( t.day(), "Thu", "day abbreviation" );
+            is( t.day_of_year(), 0, "day_of_year" );
+            is( t.month_last_day(), 31, "month_last_day" );
+            is( t.hms(), "00:00:00", "hms default separator" );
+            is( t.hms( '-' ), "00-00-00", "hms custom separator" );
+            is( t.ymd(), "1970-01-01", "ymd default separator" );
+            is( t.mdy(), "01-01-1970", "mdy default separator" );
+            is( t.dmy(), "01-01-1970", "dmy default separator" );
+            is( t.date(), "1970-01-01", "date" );
+            is( t.time(), "00:00:00", "time" );
+            is( t.cdate(), "Thu Jan  1 00:00:00 1970", "cdate" );
+            is( t.tzoffset(), 0, "tzoffset" );
+            is( t.is_leap_year(), false, "is_leap_year" );
+            is( t.week(), 1, "week" );
+            is( t.week_year(), 1970, "week_year" );
+            is( t.julian_day(), 2440587.5, "julian_day" );
+            done_testing();
+            "#,
+        )
+        .expect("Time methods should all run");
+
+    assert!(!output.stdout.contains("not ok"), "got failing TAP:\n{}", output.stdout);
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
 fn std_marshal_preserves_weak_storage_records() {
     let repo_root = repo_root();
     let runtime = Runtime::from_repo_root(&repo_root);

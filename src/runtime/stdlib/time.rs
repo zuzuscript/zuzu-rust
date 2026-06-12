@@ -366,6 +366,23 @@ pub(super) fn has_builtin_object_method(class_name: &str, name: &str) -> bool {
             | ("Time", "mon")
             | ("Time", "month")
             | ("Time", "year")
+            | ("Time", "yy")
+            | ("Time", "day_of_week")
+            | ("Time", "day")
+            | ("Time", "day_of_year")
+            | ("Time", "month_last_day")
+            | ("Time", "hms")
+            | ("Time", "ymd")
+            | ("Time", "mdy")
+            | ("Time", "dmy")
+            | ("Time", "date")
+            | ("Time", "time")
+            | ("Time", "cdate")
+            | ("Time", "tzoffset")
+            | ("Time", "is_leap_year")
+            | ("Time", "week")
+            | ("Time", "week_year")
+            | ("Time", "julian_day")
             | ("Time", "add_seconds")
             | ("Time", "add_minutes")
             | ("Time", "add_hours")
@@ -462,9 +479,71 @@ fn call_time_method(
         "min" => Ok(Value::Number(parts.minute as f64)),
         "hour" => Ok(Value::Number(parts.hour as f64)),
         "day_of_month" => Ok(Value::Number(parts.day as f64)),
-        "mon" | "month" => Ok(Value::Number(parts.month as f64)),
+        "mon" => Ok(Value::Number(parts.month as f64)),
+        "month" => Ok(Value::String(month_abbr(parts.month).to_owned())),
         "year" => Ok(Value::Number(parts.year as f64)),
+        "yy" => Ok(Value::String(format!("{:02}", parts.year % 100))),
+        "day_of_week" => Ok(Value::Number(local_weekday_number(&parts)? as f64)),
+        "day" => Ok(Value::String(local_weekday_abbr(&parts).to_owned())),
+        "day_of_year" => Ok(Value::Number(local_day_of_year(&parts)? as f64)),
+        "month_last_day" => Ok(Value::Number(local_month_last_day(&parts)? as f64)),
+        "hms" => {
+            let separator = optional_text_arg(runtime, name, args, ":")?;
+            Ok(Value::String(format!(
+                "{:02}{}{:02}{}{:02}",
+                parts.hour, separator, parts.minute, separator, parts.second,
+            )))
+        }
+        "ymd" => {
+            let separator = optional_text_arg(runtime, name, args, "-")?;
+            Ok(Value::String(format!(
+                "{:04}{}{:02}{}{:02}",
+                parts.year, separator, parts.month, separator, parts.day
+            )))
+        }
+        "mdy" => {
+            let separator = optional_text_arg(runtime, name, args, "-")?;
+            Ok(Value::String(format!(
+                "{:02}{}{:02}{}{:04}",
+                parts.month,
+                separator,
+                parts.day,
+                separator,
+                parts.year,
+            )))
+        }
+        "dmy" => {
+            let separator = optional_text_arg(runtime, name, args, "-")?;
+            Ok(Value::String(format!(
+                "{:02}{}{:02}{}{:04}",
+                parts.day,
+                separator,
+                parts.month,
+                separator,
+                parts.year,
+            )))
+        }
+        "date" => Ok(Value::String(format!("{:04}-{:02}-{:02}", parts.year, parts.month, parts.day))),
+        "time" => Ok(Value::String(format!("{:02}:{:02}:{:02}", parts.hour, parts.minute, parts.second))),
+        "cdate" => {
+            let day = local_day_of_month_for_display(&parts)?;
+            Ok(Value::String(format!(
+                "{} {} {:>2} {:02}:{:02}:{:02} {}",
+                local_weekday_abbr(&parts),
+                month_abbr(parts.month),
+                day,
+                parts.hour,
+                parts.minute,
+                parts.second,
+                parts.year
+            )))
+        }
         "timezone" => Ok(time_zone_object(zone_name)),
+        "tzoffset" => Ok(Value::Number(zone.offset_at(epoch) as f64)),
+        "is_leap_year" => Ok(Value::Boolean(is_leap_year(parts.year))),
+        "week" => Ok(Value::Number(local_week(&parts)?.week() as f64)),
+        "week_year" => Ok(Value::Number(local_week(&parts)?.year() as f64)),
+        "julian_day" => Ok(Value::Number(julian_day(&parts))),
         "with_timezone" => {
             require_arity(name, args, 1)?;
             time_object_with_zone(epoch, zone_arg(runtime, &args[0])?)
@@ -557,6 +636,94 @@ fn call_time_method(
             "unsupported Time method '{name}'"
         ))),
     }
+}
+
+fn optional_text_arg(
+    runtime: &Runtime,
+    name: &str,
+    args: &[Value],
+    default: &str,
+) -> Result<String> {
+    if args.is_empty() {
+        return Ok(default.to_owned());
+    }
+    if args.len() != 1 {
+        return Err(ZuzuRustError::runtime(format!(
+            "{name}() expects 0 or 1 argument"
+        )));
+    }
+    Ok(runtime.render_value(&args[0])?)
+}
+
+fn local_weekday_number(parts: &WallParts) -> Result<u32> {
+    Ok(local_date(parts)?.weekday().number_from_monday())
+}
+
+fn local_weekday_abbr(parts: &WallParts) -> Result<String> {
+    let day = local_weekday_number(parts)? as usize;
+    Ok(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][day - 1].to_owned())
+}
+
+fn local_date(parts: &WallParts) -> Result<NaiveDate> {
+    NaiveDate::from_ymd_opt(parts.year, parts.month, parts.day).ok_or_else(|| {
+        ZuzuRustError::runtime(format!(
+            "invalid Time date {}/{}/{}",
+            parts.year, parts.month, parts.day
+        ))
+    })
+}
+
+fn local_day_of_month_for_display(parts: &WallParts) -> Result<u32> {
+    Ok(local_date(parts)?.day())
+}
+
+fn local_day_of_year(parts: &WallParts) -> Result<u32> {
+    Ok(local_date(parts)?.ordinal0())
+}
+
+fn local_month_last_day(parts: &WallParts) -> Result<u32> {
+    let (next_year, next_month) = if parts.month == 12 {
+        (parts.year + 1, 1)
+    } else {
+        (parts.year, parts.month + 1)
+    };
+    let next_month_start = NaiveDate::from_ymd_opt(next_year, next_month, 1).ok_or_else(|| {
+        ZuzuRustError::runtime(format!(
+            "invalid Time date {}/{:02}/01",
+            next_year, next_month
+        ))
+    })?;
+    Ok((next_month_start - ChronoDuration::days(1)).day())
+}
+
+fn local_week(parts: &WallParts) -> Result<chrono::IsoWeek> {
+    Ok(local_date(parts)?.iso_week())
+}
+
+fn is_leap_year(year: i32) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn julian_day(parts: &WallParts) -> f64 {
+    let (mut year, mut month) = (parts.year, parts.month as i32);
+    let day = parts.day as i32;
+    if month <= 2 {
+        year -= 1;
+        month += 12;
+    }
+    let a = (14 - month) / 12;
+    let y = year + 4800 - a;
+    let m = month + 12 * a - 3;
+    let day_number = day
+        + (153 * m + 2) / 5
+        + 365 * y
+        + y / 4
+        - y / 100
+        + y / 400
+        - 32045;
+    let day_time = (parts.hour as f64 * 3600.0 + parts.minute as f64 * 60.0 + parts.second as f64)
+        / 86_400.0;
+    day_number as f64 + day_time - 0.5
 }
 
 fn call_zone_method(builtin_value: &Value, name: &str, args: &[Value]) -> Result<Value> {
