@@ -264,6 +264,80 @@ fn switch_index_metadata_is_only_emitted_at_o3() {
 }
 
 #[test]
+fn switch_indexing_supports_string_and_integer_dispatch_tables() {
+    let eq_json = compile_json(
+        r#"
+        switch ( http_method : eq ) {
+            case "GET":
+                say 1;
+            case "POST":
+                say 2;
+        }
+        "#,
+        optimization_options(OptimizationLevel::O3),
+    );
+    assert!(eq_json.contains("\"key\": \"q:GET\""));
+    assert!(eq_json.contains("\"key\": \"q:POST\""));
+
+    let eqi_json = compile_json(
+        r#"
+        switch ( http_method : eqi ) {
+            case "GET":
+                say 1;
+            case "Post":
+                say 2;
+        }
+        "#,
+        optimization_options(OptimizationLevel::O3),
+    );
+    assert!(eqi_json.contains("\"key\": \"qi:get\""));
+    assert!(eqi_json.contains("\"key\": \"qi:post\""));
+
+    let integer_json = compile_json(
+        r#"
+        switch ( status : = ) {
+            case 0:
+                say "zero";
+            case -1:
+                say "minus";
+        }
+        "#,
+        optimization_options(OptimizationLevel::O3),
+    );
+    assert!(integer_json.contains("\"key\": \"i:0\""));
+    assert!(integer_json.contains("\"key\": \"i:-1\""));
+}
+
+#[test]
+fn switch_indexing_rejects_mixed_operators_and_duplicate_keys() {
+    let mixed_json = compile_json(
+        r#"
+        switch ( http_method : eq ) {
+            case "GET":
+                say 1;
+            case ~ /^P/:
+                say 2;
+        }
+        "#,
+        optimization_options(OptimizationLevel::O3),
+    );
+    assert!(mixed_json.contains("\"index\": null"));
+
+    let duplicate_json = compile_json(
+        r#"
+        switch ( http_method : eqi ) {
+            case "GET":
+                say 1;
+            case "get":
+                say 2;
+        }
+        "#,
+        optimization_options(OptimizationLevel::O3),
+    );
+    assert!(duplicate_json.contains("\"index\": null"));
+}
+
+#[test]
 fn range_array_loop_lowering_is_o3_only() {
     let source = r#"
         for ( let i in [ 1 ... 3 ] ) {

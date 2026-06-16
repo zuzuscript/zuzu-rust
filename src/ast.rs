@@ -232,6 +232,7 @@ pub struct SwitchCase {
     pub line: usize,
     pub source_file: Option<String>,
     pub values: Vec<Expression>,
+    pub operators: Vec<Option<String>>,
     pub consequent: Vec<Statement>,
 }
 
@@ -1200,6 +1201,15 @@ impl SwitchCase {
         write_field_name(out, indent + 1, "values");
         write_array(out, indent + 1, &self.values, |out, indent, expr| {
             expr.write_json(out, indent)
+        });
+        out.push_str(",\n");
+        write_field_name(out, indent + 1, "operators");
+        write_array(out, indent + 1, &self.operators, |out, indent, operator| {
+            write_indent(out, indent);
+            match operator {
+                Some(operator) => write_json_string(out, operator),
+                None => out.push_str("null"),
+            }
         });
         out.push_str(",\n");
         write_field_name(out, indent + 1, "consequent");

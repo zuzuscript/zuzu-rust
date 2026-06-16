@@ -9,6 +9,10 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ### Added
 
+- `switch` case values can now override the switch comparator with a
+  comparison operator prefix, such as `case ~ /^Rob/` or `case eqi "Bob"`.
+  O3 switch indexing now also optimizes literal-string `eq`/`eqi` dispatch
+  tables and literal-integer numeric equality tables.
 - Added shared conformance coverage for dynamic method calls whose method
   expression evaluates to either a method name or a Method value, including
   named arguments and `std/eval`.

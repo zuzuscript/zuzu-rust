@@ -1117,6 +1117,34 @@ fn runs_switch_ztest_scripts() {
             "1..4\n",
         ),
     );
+
+    let operators_output = Runtime::from_repo_root(&repo_root)
+        .run_script_file(&repo_root.join("languagetests/lang/control/switch-case-operators.zzs"))
+        .expect("switch-case-operators.zzs should execute successfully");
+    assert_eq!(
+        operators_output.stdout,
+        concat!(
+            "1..18\n",
+            "ok 1 - switch case inherits header comparator\n",
+            "ok 2 - switch case can override with regexp matching\n",
+            "ok 3 - switch case can override with eqi matching\n",
+            "ok 4 - switch case can override with numeric less-than\n",
+            "ok 5 - switch case still supports literal numeric equality\n",
+            "ok 6 - switch case can override with numeric greater-than\n",
+            "ok 7 - switch case can use three-way string comparison\n",
+            "ok 8 - switch case can use in comparison\n",
+            "ok 9 - switch case can use not-in comparison\n",
+            "ok 10 - switch case can use subset comparison\n",
+            "ok 11 - switch case can use superset comparison\n",
+            "ok 12 - switch case can use equivalent comparison\n",
+            "ok 13 - switch case can use path existence comparison\n",
+            "ok 14 - switch case can use instanceof comparison\n",
+            "ok 15 - switch case can use does comparison\n",
+            "ok 16 - switch case can use can comparison\n",
+            "ok 17 - switch case can use divides comparison\n",
+            "ok 18 - switch case can use not-divides comparison\n",
+        ),
+    );
 }
 
 #[test]

@@ -748,7 +748,7 @@ impl Parser {
         self.expect_punct('(', "Expected '(' after switch")?;
         let discriminant = self.parse_expression()?;
         let comparator = if self.match_operator(":") {
-            Some(self.expect_comparator_text("Expected switch comparator operator")?)
+            Some(self.expect_switch_comparator_text("Expected switch comparator operator")?)
         } else {
             None
         };
@@ -760,9 +760,13 @@ impl Parser {
         while !self.check_punct('}') {
             if self.match_keyword("case") {
                 let case_line = self.previous_line();
-                let mut values = vec![self.parse_expression()?];
+                let (operator, value) = self.parse_switch_case_value()?;
+                let mut values = vec![value];
+                let mut operators = vec![operator];
                 while self.match_punct(',') {
-                    values.push(self.parse_expression()?);
+                    let (operator, value) = self.parse_switch_case_value()?;
+                    values.push(value);
+                    operators.push(operator);
                 }
                 self.expect_operator(":", "Expected ':' after case values")?;
                 let consequent = self.parse_switch_consequent()?;
@@ -770,6 +774,7 @@ impl Parser {
                     line: case_line,
                     source_file: self.source_file(),
                     values,
+                    operators,
                     consequent,
                 });
             } else if self.match_keyword("default") {
@@ -790,6 +795,12 @@ impl Parser {
             default,
             index: None,
         })
+    }
+
+    fn parse_switch_case_value(&mut self) -> Result<(Option<String>, Expression)> {
+        let operator = self.match_switch_comparator_text();
+        let value = self.parse_expression()?;
+        Ok((operator, value))
     }
 
     fn parse_switch_consequent(&mut self) -> Result<Vec<Statement>> {
@@ -2391,48 +2402,19 @@ impl Parser {
         }
     }
 
-    fn expect_comparator_text(&mut self, message: &str) -> Result<String> {
-        match self.current_kind() {
-            TokenKind::Operator(value) => {
-                let value = value.clone();
-                self.advance();
-                Ok(value)
-            }
-            TokenKind::Keyword(value)
-                if [
-                    "eq",
-                    "ne",
-                    "gt",
-                    "ge",
-                    "lt",
-                    "le",
-                    "cmp",
-                    "eqi",
-                    "nei",
-                    "gti",
-                    "gei",
-                    "lti",
-                    "lei",
-                    "cmpi",
-                    "instanceof",
-                    "does",
-                    "can",
-                    "and",
-                    "or",
-                    "xor",
-                    "nand",
-                    "mod",
-                    "union",
-                    "intersection",
-                ]
-                .contains(value) =>
-            {
-                let value = (*value).to_owned();
-                self.advance();
-                Ok(value)
-            }
-            _ => Err(self.error_current(message)),
-        }
+    fn expect_switch_comparator_text(&mut self, message: &str) -> Result<String> {
+        self.match_switch_comparator_text()
+            .ok_or_else(|| self.error_current(message))
+    }
+
+    fn match_switch_comparator_text(&mut self) -> Option<String> {
+        let value = match self.current_kind() {
+            TokenKind::Operator(value) if is_switch_comparator(value) => value.clone(),
+            TokenKind::Keyword(value) if is_switch_comparator(value) => (*value).to_owned(),
+            _ => return None,
+        };
+        self.advance();
+        Some(value)
     }
 
     fn error_current(&self, message: impl Into<String>) -> ZuzuRustError {
@@ -2443,6 +2425,57 @@ impl Parser {
         };
         err.with_source_file(self.source_file.as_deref())
     }
+}
+
+fn is_switch_comparator(value: &str) -> bool {
+    matches!(
+        value,
+        ">" | "<"
+            | ">="
+            | "≤"
+            | "<="
+            | "≥"
+            | "="
+            | "!="
+            | "≠"
+            | "=="
+            | "≡"
+            | "≢"
+            | "<=>"
+            | "≶"
+            | "≷"
+            | "eq"
+            | "ne"
+            | "gt"
+            | "ge"
+            | "lt"
+            | "le"
+            | "cmp"
+            | "eqi"
+            | "nei"
+            | "gti"
+            | "gei"
+            | "lti"
+            | "lei"
+            | "cmpi"
+            | "in"
+            | "∈"
+            | "∉"
+            | "subsetof"
+            | "⊂"
+            | "supersetof"
+            | "⊃"
+            | "equivalentof"
+            | "⊂⊃"
+            | "instanceof"
+            | "does"
+            | "can"
+            | "~"
+            | "@?"
+            | "∣"
+            | "divides"
+            | "∤"
+    )
 }
 
 fn token_text(kind: &TokenKind) -> String {

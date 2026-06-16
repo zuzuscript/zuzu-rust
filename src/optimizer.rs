@@ -352,6 +352,11 @@ impl Optimizer<'_> {
             *comparator = preferred_operator(comparator).to_owned();
         }
         for case in &mut node.cases {
+            for operator in &mut case.operators {
+                if let Some(operator) = operator {
+                    *operator = preferred_operator(operator).to_owned();
+                }
+            }
             for value in &mut case.values {
                 self.optimize_expression(value);
             }
@@ -2174,14 +2179,17 @@ pub fn preferred_operator(operator: &str) -> &str {
 
 fn build_switch_index(node: &SwitchStatement) -> Option<Vec<SwitchIndexEntry>> {
     let comparator = node.comparator.as_deref().map(preferred_operator);
-    if !matches!(comparator, None | Some("=") | Some("≡")) {
-        return None;
-    }
     let mut entries = Vec::new();
     let mut seen = HashSet::new();
     for (case_index, case) in node.cases.iter().enumerate() {
-        for value in &case.values {
-            let key = switch_key(value)?;
+        for (value_index, value) in case.values.iter().enumerate() {
+            let operator = case
+                .operators
+                .get(value_index)
+                .and_then(|value| value.as_deref())
+                .map(preferred_operator)
+                .or(comparator);
+            let key = switch_key(operator, value)?;
             if !seen.insert(key.clone()) {
                 return None;
             }
@@ -2195,7 +2203,23 @@ fn build_switch_index(node: &SwitchStatement) -> Option<Vec<SwitchIndexEntry>> {
     }
 }
 
-fn switch_key(expr: &Expression) -> Option<String> {
+fn switch_key(operator: Option<&str>, expr: &Expression) -> Option<String> {
+    match operator {
+        None | Some("≡") => switch_strict_key(expr),
+        Some("=") => literal_integer(expr).map(|value| format!("i:{value}")),
+        Some("eq") => match expr {
+            Expression::StringLiteral { value, .. } => Some(format!("q:{value}")),
+            _ => None,
+        },
+        Some("eqi") => match expr {
+            Expression::StringLiteral { value, .. } => Some(format!("qi:{}", value.to_lowercase())),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn switch_strict_key(expr: &Expression) -> Option<String> {
     match expr {
         Expression::NullLiteral { .. } => Some("n:".to_owned()),
         Expression::BooleanLiteral { value, .. } => Some(format!("b:{value}")),
@@ -2203,6 +2227,20 @@ fn switch_key(expr: &Expression) -> Option<String> {
             Some(format!("f:{}", value.parse::<f64>().ok()?))
         }
         Expression::StringLiteral { value, .. } => Some(format!("s:{value}")),
+        _ => None,
+    }
+}
+
+fn literal_integer(expr: &Expression) -> Option<i64> {
+    match expr {
+        Expression::NumberLiteral { value, .. } => {
+            let value = value.parse::<f64>().ok()?;
+            if value.is_finite() && value.fract() == 0.0 {
+                Some(value as i64)
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }

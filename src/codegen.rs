@@ -491,7 +491,16 @@ fn render_import_declaration(node: &ImportDeclaration, indent: usize, out: &mut 
 fn render_switch_case(case: &SwitchCase, indent: usize, out: &mut String) {
     push_indent(out, indent);
     out.push_str("case ");
-    out.push_str(&render_expression_list(&case.values));
+    for (index, value) in case.values.iter().enumerate() {
+        if index > 0 {
+            out.push_str(", ");
+        }
+        if let Some(operator) = case.operators.get(index).and_then(|value| value.as_deref()) {
+            out.push_str(operator);
+            out.push(' ');
+        }
+        out.push_str(&render_expression(value));
+    }
     out.push_str(":\n");
     render_statement_list(&case.consequent, indent + 1, out);
 }

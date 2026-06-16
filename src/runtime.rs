@@ -1749,7 +1749,7 @@ impl Runtime {
     ) -> Result<ControlFlow> {
         let discriminant = self.eval_expression(&node.discriminant, Rc::clone(&env))?;
         if let Some(index) = &node.index {
-            if let Some(key) = self.switch_index_key(&discriminant) {
+            for key in self.switch_index_keys(&discriminant) {
                 if let Some(entry) = index.iter().find(|entry| entry.key == key) {
                     return self.eval_switch_cases_from(node, entry.case_index, env);
                 }
@@ -1758,9 +1758,13 @@ impl Runtime {
         let mut matched = false;
         for case in &node.cases {
             if !matched {
-                for value in &case.values {
-                    let candidate = self.eval_expression(value, Rc::clone(&env))?;
-                    if self.switch_matches(&discriminant, &candidate, node.comparator.as_deref())? {
+                for (index, value) in case.values.iter().enumerate() {
+                    let operator = case
+                        .operators
+                        .get(index)
+                        .and_then(|value| value.as_deref())
+                        .or(node.comparator.as_deref());
+                    if self.switch_matches(&discriminant, value, operator, Rc::clone(&env))? {
                         matched = true;
                         break;
                     }
@@ -1810,34 +1814,51 @@ impl Runtime {
         Ok(ControlFlow::Normal)
     }
 
-    fn switch_index_key(&self, value: &Value) -> Option<String> {
-        match self.deref_value(value).ok()? {
-            Value::Null => Some("n:".to_owned()),
-            Value::Boolean(value) => Some(format!("b:{value}")),
-            Value::Number(value) => Some(format!("f:{value}")),
-            Value::String(value) => Some(format!("s:{value}")),
-            _ => None,
+    fn switch_index_keys(&self, value: &Value) -> Vec<String> {
+        let mut keys = Vec::new();
+        if let Ok(value) = self.deref_value(value) {
+            match value {
+                Value::Null => keys.push("n:".to_owned()),
+                Value::Boolean(value) => keys.push(format!("b:{value}")),
+                Value::Number(value) => keys.push(format!("f:{value}")),
+                Value::String(value) => keys.push(format!("s:{value}")),
+                _ => {}
+            }
         }
+        if let Ok(text) = self.value_to_operator_string(value) {
+            keys.push(format!("q:{text}"));
+            keys.push(format!("qi:{}", text.to_lowercase()));
+        }
+        if let Ok(number) = self.value_to_number(value) {
+            if number.is_finite() && number.fract() == 0.0 {
+                keys.push(format!("i:{}", number as i64));
+            }
+        }
+        keys
     }
 
     fn switch_matches(
         &self,
         discriminant: &Value,
-        candidate: &Value,
+        candidate: &Expression,
         comparator: Option<&str>,
+        env: Rc<Environment>,
     ) -> Result<bool> {
-        match comparator.unwrap_or("=") {
-            "=" | "==" | "≡" => Ok(discriminant.coerced_eq(candidate)),
-            "eq" => Ok(self.render_value(discriminant)? == self.render_value(candidate)?),
-            "~" => {
-                let result = self.eval_regex_match(&self.render_value(discriminant)?, candidate)?;
-                self.value_is_truthy(&result)
-            }
-            other => Err(ZuzuRustError::runtime(format!(
-                "unsupported switch comparator '{}'",
-                other
-            ))),
-        }
+        let compare_env = Rc::new(Environment::new(Some(env)));
+        compare_env.define(
+            "__zuzu_switch_value".to_owned(),
+            discriminant.clone(),
+            false,
+        );
+        let left = Expression::Identifier {
+            line: candidate.line(),
+            source_file: candidate.source_file().map(ToOwned::to_owned),
+            name: "__zuzu_switch_value".to_owned(),
+            inferred_type: None,
+            binding_depth: None,
+        };
+        let result = self.eval_binary(comparator.unwrap_or("="), &left, candidate, compare_env)?;
+        self.value_is_truthy(&result)
     }
 
     fn eval_collection_elements(
