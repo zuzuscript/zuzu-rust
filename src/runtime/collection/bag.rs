@@ -26,7 +26,12 @@ impl Runtime {
                 require_arity(name, args, 0)?;
                 Ok(Value::Bag(values.clone()))
             }
-            "remove" | "remove_first" => {
+            "remove" => {
+                require_arity(name, args, 1)?;
+                values.retain(|value| !value.strict_eq(&args[0]));
+                Ok(Value::Bag(values.clone()))
+            }
+            "remove_first" => {
                 require_arity(name, args, 1)?;
                 let mut removed = false;
                 values.retain(|value| {

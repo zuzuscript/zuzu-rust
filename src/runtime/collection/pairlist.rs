@@ -35,7 +35,7 @@ impl Runtime {
             }
             "enumerate" => {
                 require_arity(name, args, 0)?;
-                Ok(Value::Bag(
+                Ok(Value::Array(
                     values
                         .iter()
                         .map(|(key, value)| Value::Pair(key.clone(), Box::new(value.clone())))

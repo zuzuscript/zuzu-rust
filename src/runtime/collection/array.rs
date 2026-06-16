@@ -3,7 +3,8 @@ use crate::{Result, ZuzuRustError};
 use super::super::{Runtime, Value};
 use super::common::{
     collection_get, collection_product, collection_sum, expect_function, make_iterator,
-    optional_count, require_arity, stored_arg, unique_values, CollectionTarget,
+    optional_count, require_arity, require_arity_range, stored_arg, unique_values,
+    CollectionTarget,
 };
 
 impl Runtime {
@@ -175,15 +176,33 @@ impl Runtime {
                 Ok(Value::Array(values[from..to].to_vec()))
             }
             "join" => {
-                require_arity(name, args, 1)?;
-                let separator = args[0].render();
-                Ok(Value::String(
-                    values
-                        .iter()
-                        .map(|value| value.render())
-                        .collect::<Vec<_>>()
-                        .join(&separator),
-                ))
+                require_arity_range(name, args, 1, 2)?;
+                let separator = self.value_to_operator_string(&args[0])?;
+                let mut fallback_string = None;
+                let mut out = Vec::new();
+                for value in values.iter() {
+                    match self.value_to_operator_string(value) {
+                        Ok(text) => out.push(text),
+                        Err(_) if args.len() == 2 => {
+                            if let Value::Function(function) = &args[1] {
+                                let replacement = self.await_if_task(self.call_function(
+                                    function,
+                                    vec![value.clone()],
+                                    Vec::new(),
+                                )?)?;
+                                out.push(self.value_to_operator_string(&replacement)?);
+                            } else {
+                                if fallback_string.is_none() {
+                                    fallback_string =
+                                        Some(self.value_to_operator_string(&args[1])?);
+                                }
+                                out.push(fallback_string.clone().unwrap_or_default());
+                            }
+                        }
+                        Err(err) => return Err(err),
+                    }
+                }
+                Ok(Value::String(out.join(&separator)))
             }
             "sum" => {
                 require_arity(name, args, 0)?;
