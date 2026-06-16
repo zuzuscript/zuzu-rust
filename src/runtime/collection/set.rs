@@ -20,7 +20,7 @@ impl Runtime {
                 }
                 Ok(Value::Set(values.clone()))
             }
-            "add_weak" => {
+            "add_weak" | "push_weak" => {
                 for value in args {
                     push_unique(values, stored_arg(value, true));
                 }

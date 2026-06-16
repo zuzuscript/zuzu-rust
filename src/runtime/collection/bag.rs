@@ -18,7 +18,7 @@ impl Runtime {
                 values.extend(args.iter().cloned().map(Value::into_shared_if_composite));
                 Ok(Value::Bag(values.clone()))
             }
-            "add_weak" => {
+            "add_weak" | "push_weak" => {
                 values.extend(args.iter().map(|value| stored_arg(value, true)));
                 Ok(Value::Bag(values.clone()))
             }

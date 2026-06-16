@@ -3,9 +3,28 @@ use crate::{Result, ZuzuRustError};
 use super::super::{Runtime, Value};
 use super::common::{
     collection_get, collection_product, collection_sum, expect_function, make_iterator,
-    optional_count, require_arity, require_arity_range, stored_arg, unique_values,
+    optional_count, require_arity, require_arity_range, signed_index, stored_arg, unique_values,
     CollectionTarget,
 };
+
+fn random_index(max: usize) -> Result<usize> {
+    if max == 0 {
+        return Ok(0);
+    }
+    let mut bytes = [0_u8; 8];
+    getrandom::getrandom(&mut bytes)
+        .map_err(|err| ZuzuRustError::runtime(format!("random failed: {err}")))?;
+    Ok((u64::from_le_bytes(bytes) % max as u64) as usize)
+}
+
+fn shuffled_values(values: &[Value]) -> Result<Vec<Value>> {
+    let mut out = values.to_vec();
+    for idx in (1..out.len()).rev() {
+        let swap_idx = random_index(idx + 1)?;
+        out.swap(idx, swap_idx);
+    }
+    Ok(out)
+}
 
 impl Runtime {
     pub(in crate::runtime) fn call_array_method(
@@ -66,10 +85,14 @@ impl Runtime {
                 require_arity(name, args, 0)?;
                 Ok(Value::Boolean(values.is_empty()))
             }
-            "get" => Ok(collection_get(values, args)),
+            "get" => collection_get(values, args),
             "set" => {
                 require_arity(name, args, 2)?;
-                let index = super::common::to_index(&args[0]);
+                let index = signed_index(values.len(), &args[0]);
+                if index < 0 {
+                    return Err(ZuzuRustError::runtime("Array index is out of range"));
+                }
+                let index = index as usize;
                 if index >= values.len() {
                     values.resize(index, Value::Null);
                     values.push(args[1].clone().into_shared_if_composite());
@@ -80,7 +103,11 @@ impl Runtime {
             }
             "set_weak" => {
                 require_arity(name, args, 2)?;
-                let index = super::common::to_index(&args[0]);
+                let index = signed_index(values.len(), &args[0]);
+                if index < 0 {
+                    return Err(ZuzuRustError::runtime("Array index is out of range"));
+                }
+                let index = index as usize;
                 let value = stored_arg(&args[1], true);
                 if index >= values.len() {
                     values.resize(index, Value::Null);
@@ -218,11 +245,13 @@ impl Runtime {
             }
             "shuffle" => {
                 require_arity(name, args, 0)?;
-                Ok(Value::Array(values.clone()))
+                Ok(Value::Array(shuffled_values(values)?))
             }
             "sample" => {
                 let n = optional_count(args, 1)?;
-                Ok(Value::Array(values.iter().take(n).cloned().collect()))
+                Ok(Value::Array(
+                    shuffled_values(values)?.into_iter().take(n).collect(),
+                ))
             }
             "contains" => {
                 require_arity(name, args, 1)?;

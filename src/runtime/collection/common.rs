@@ -174,10 +174,22 @@ pub(in crate::runtime) fn to_index(value: &Value) -> usize {
     }
 }
 
-pub(in crate::runtime) fn collection_get(values: &[Value], args: &[Value]) -> Value {
-    let index = args.first().map(to_index).unwrap_or(0);
+pub(in crate::runtime) fn signed_index(len: usize, value: &Value) -> isize {
+    let mut index = value.to_number().unwrap_or(0.0) as isize;
+    if index < 0 {
+        index += len as isize;
+    }
+    index
+}
+
+pub(in crate::runtime) fn collection_get(values: &[Value], args: &[Value]) -> Result<Value> {
+    require_arity_range("get", args, 1, 2)?;
+    let index = signed_index(values.len(), &args[0]);
     let default = args.get(1).cloned().unwrap_or(Value::Null);
-    values.get(index).cloned().unwrap_or(default)
+    if index < 0 {
+        return Ok(default);
+    }
+    Ok(values.get(index as usize).cloned().unwrap_or(default))
 }
 
 pub(in crate::runtime) fn collection_sum(values: &[Value]) -> Result<f64> {

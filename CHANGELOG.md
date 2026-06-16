@@ -22,7 +22,11 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 - Collection parity fixes: `Array.join()` now supports an unstringable-value
   substitute or callback, `PairList.enumerate()` returns an Array of pairs, and
   `Bag.remove()` removes every matching value. Arrays now also expose
-  `to_Array()`, and Dict, Bag, and PairList expose `is_empty()`.
+  `to_Array()`, Dict, Bag, and PairList expose `is_empty()`, and Bag/Set
+  expose `push_weak()` as an alias for `add_weak()`. `Array.get()` now requires
+  an index, `get()`/`set()`/`set_weak()` count negative indexes from the end,
+  Array callback methods reject missing or extra callback arguments, and
+  `sample()`/`shuffle()` return randomised non-mutating results.
 - Bare wordlike named-argument keys such as `length: 42` now parse like
   the same unquoted keys in Dict and PairList literals.
 
