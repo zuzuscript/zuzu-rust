@@ -1824,6 +1824,18 @@ impl Parser {
             });
         }
 
+        if self.starts_named_argument() {
+            let key = self.parse_dict_key_before_colon()?;
+            self.expect_operator(":", "Expected ':' in named argument")?;
+            let value = self.parse_expression()?;
+            return Ok(CallArgument::Named {
+                line: key.line(),
+                source_file: key.source_file().map(str::to_owned),
+                name: key,
+                value,
+            });
+        }
+
         let expr = self.parse_expression()?;
         let line = expr.line();
         if self.match_operator(":") {

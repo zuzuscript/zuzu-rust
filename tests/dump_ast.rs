@@ -278,7 +278,7 @@ fn parses_phase_a_expression_forms() {
 #[test]
 fn dumps_spread_call_arguments_as_structured_nodes() {
     let source = r#"
-        let got := target( 1, ...items, label: "x", ...{{ extra: 2 }} );
+        let got := target( 1, ...items, label: "x", length: 2, ...{{ extra: 3 }} );
     "#;
 
     let program = parse_syntax_only(source).expect("spread call arguments should parse");
@@ -291,6 +291,7 @@ fn dumps_spread_call_arguments_as_structured_nodes() {
     assert!(json.contains("\"type\": \"Identifier\""));
     assert!(json.contains("\"name\": \"items\""));
     assert!(json.contains("\"type\": \"PairListLiteral\""));
+    assert!(json.contains("\"name\": \"length\""));
     assert!(json.contains("\"name\": \"extra\""));
 }
 
