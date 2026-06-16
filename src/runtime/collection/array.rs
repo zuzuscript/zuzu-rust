@@ -95,6 +95,10 @@ impl Runtime {
                 values.clear();
                 Ok(Value::Array(values.clone()))
             }
+            "to_Array" => {
+                require_arity(name, args, 0)?;
+                Ok(Value::Array(values.clone()))
+            }
             "to_Set" => Ok(Value::Set(unique_values(values))),
             "to_Bag" => Ok(Value::Bag(values.clone())),
             "to_Iterator" => {

@@ -60,7 +60,7 @@ impl Runtime {
                         .count() as f64,
                 ))
             }
-            "empty" => {
+            "empty" | "is_empty" => {
                 require_arity(name, args, 0)?;
                 Ok(Value::Boolean(values.is_empty()))
             }

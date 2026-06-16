@@ -144,7 +144,7 @@ impl Runtime {
                 require_arity(name, args, 0)?;
                 Ok(Value::Number(values.len() as f64))
             }
-            "empty" => {
+            "empty" | "is_empty" => {
                 require_arity(name, args, 0)?;
                 Ok(Value::Boolean(values.is_empty()))
             }
