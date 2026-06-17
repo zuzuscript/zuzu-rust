@@ -3111,6 +3111,13 @@ impl Runtime {
                     self.value_is_truthy(&self.eval_expression(right, env)?)?,
                 ))
             }
+            "and?" | "⋀?" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                if self.value_is_truthy(&left_value)? {
+                    return self.eval_expression(right, env);
+                }
+                Ok(left_value)
+            }
             "or" | "⋁" => {
                 let left_value = self.eval_expression(left, Rc::clone(&env))?;
                 if self.value_is_truthy(&left_value)? {
@@ -3120,15 +3127,128 @@ impl Runtime {
                     self.value_is_truthy(&self.eval_expression(right, env)?)?,
                 ))
             }
+            "or?" | "⋁?" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                if self.value_is_truthy(&left_value)? {
+                    return Ok(left_value);
+                }
+                self.eval_expression(right, env)
+            }
+            "nor" | "⊽" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                if self.value_is_truthy(&left_value)? {
+                    return Ok(Value::Boolean(false));
+                }
+                Ok(Value::Boolean(
+                    !self.value_is_truthy(&self.eval_expression(right, env)?)?,
+                ))
+            }
+            "nor?" | "⊽?" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                let right_value = self.eval_expression(right, env)?;
+                if self.value_is_truthy(&left_value)? {
+                    if self.value_is_truthy(&right_value)? {
+                        Ok(Value::Boolean(false))
+                    } else {
+                        Ok(right_value)
+                    }
+                } else if self.value_is_truthy(&right_value)? {
+                    Ok(left_value)
+                } else {
+                    Ok(Value::Boolean(true))
+                }
+            }
             "xor" | "⊻" => {
                 let lhs = self.value_is_truthy(&self.eval_expression(left, Rc::clone(&env))?)?;
                 let rhs = self.value_is_truthy(&self.eval_expression(right, env)?)?;
                 Ok(Value::Boolean(lhs ^ rhs))
             }
+            "xor?" | "⊻?" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                let right_value = self.eval_expression(right, env)?;
+                if self.value_is_truthy(&left_value)? {
+                    if self.value_is_truthy(&right_value)? {
+                        Ok(Value::Boolean(false))
+                    } else {
+                        Ok(left_value)
+                    }
+                } else if self.value_is_truthy(&right_value)? {
+                    Ok(right_value)
+                } else {
+                    Ok(Value::Boolean(false))
+                }
+            }
+            "xnor" | "↔" => {
+                let lhs = self.value_is_truthy(&self.eval_expression(left, Rc::clone(&env))?)?;
+                let rhs = self.value_is_truthy(&self.eval_expression(right, env)?)?;
+                Ok(Value::Boolean(lhs == rhs))
+            }
+            "xnor?" | "↔?" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                let right_value = self.eval_expression(right, env)?;
+                if self.value_is_truthy(&left_value)? {
+                    Ok(right_value)
+                } else if self.value_is_truthy(&right_value)? {
+                    Ok(left_value)
+                } else {
+                    Ok(Value::Boolean(true))
+                }
+            }
             "nand" | "⊼" => {
                 let lhs = self.value_is_truthy(&self.eval_expression(left, Rc::clone(&env))?)?;
                 let rhs = self.value_is_truthy(&self.eval_expression(right, env)?)?;
                 Ok(Value::Boolean(!(lhs && rhs)))
+            }
+            "nand?" | "⊼?" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                let right_value = self.eval_expression(right, env)?;
+                if self.value_is_truthy(&left_value)? {
+                    if self.value_is_truthy(&right_value)? {
+                        Ok(Value::Boolean(false))
+                    } else {
+                        Ok(Value::Boolean(true))
+                    }
+                } else if self.value_is_truthy(&right_value)? {
+                    Ok(right_value)
+                } else {
+                    Ok(Value::Boolean(true))
+                }
+            }
+            "onlyif" | "⊨" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                if !self.value_is_truthy(&left_value)? {
+                    return Ok(Value::Boolean(true));
+                }
+                Ok(Value::Boolean(
+                    self.value_is_truthy(&self.eval_expression(right, env)?)?,
+                ))
+            }
+            "onlyif?" | "⊨?" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                if self.value_is_truthy(&left_value)? {
+                    return self.eval_expression(right, env);
+                }
+                Ok(Value::Boolean(true))
+            }
+            "butnot" | "⊭" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                if !self.value_is_truthy(&left_value)? {
+                    return Ok(Value::Boolean(false));
+                }
+                Ok(Value::Boolean(
+                    !self.value_is_truthy(&self.eval_expression(right, env)?)?,
+                ))
+            }
+            "butnot?" | "⊭?" => {
+                let left_value = self.eval_expression(left, Rc::clone(&env))?;
+                if !self.value_is_truthy(&left_value)? {
+                    return Ok(left_value);
+                }
+                if self.value_is_truthy(&self.eval_expression(right, env)?)? {
+                    Ok(Value::Boolean(false))
+                } else {
+                    Ok(left_value)
+                }
             }
             "▷" | "|>" => {
                 let value = self.eval_expression(left, Rc::clone(&env))?;

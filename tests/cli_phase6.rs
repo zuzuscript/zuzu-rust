@@ -602,6 +602,53 @@ fn cli_lint_reports_style_warning_suggestions() {
 }
 
 #[test]
+fn cli_lint_reports_unintuitive_logical_chains() {
+    let source = r#"
+        let a := true;
+        let b := false;
+        let c := true;
+
+        a nand b nand c;
+        a nand b nand c nand a;
+        a ⊽ b ⊽ c;
+        a xnor? b xnor? c;
+        a ⊼? b ⊼? c;
+        a nor? b nor? c;
+
+        a nand b;
+        a nor b;
+        a xnor b xnor c;
+        a and b and c;
+        a or? b or? c;
+        a xor? b xor? c;
+        a onlyif? b onlyif? c;
+        a butnot? b butnot? c;
+    "#;
+
+    let output = run_zuzu(&["--lint", "-e", source], &repo_root());
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr
+            .matches("unintuitive chained use of operator ⊼\n")
+            .count(),
+        2
+    );
+    assert!(stderr.contains("unintuitive chained use of operator ⊽"));
+    assert!(stderr.contains("unintuitive chained use of operator ↔?"));
+    assert!(stderr.contains("unintuitive chained use of operator ⊼?"));
+    assert!(stderr.contains("unintuitive chained use of operator ⊽?"));
+    assert!(!stderr.contains("unintuitive chained use of operator ↔\n"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⋀"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⋁?"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⊻?"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⊨?"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⊭?"));
+}
+
+#[test]
 fn cli_lint_suggests_moving_top_level_import_into_single_callable_scope() {
     let dir = temp_dir("lint-import-scope");
     let lib = dir.join("lib");

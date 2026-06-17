@@ -47,6 +47,10 @@ const KEYWORDS: &[&str] = &[
     "or",
     "xor",
     "nand",
+    "nor",
+    "xnor",
+    "onlyif",
+    "butnot",
     "not",
     "mod",
     "eq",
@@ -91,9 +95,9 @@ const KEYWORDS: &[&str] = &[
 
 const TWO_CHAR_OPERATORS: &[&str] = &[
     ":=", "+=", "-=", "*=", "/=", "_=", "~=", "**", "==", "!=", "<=", ">=", "++", "--", "->", "@?",
-    "@@", "?:", "|>", "<|", "×=", "÷=", "≤", "≥", "≠", "≡", "≢", "≶", "≷", "⋀", "⋁", "⊻", "⊼", "∈",
-    "∉", "⋃", "⋂", "∖", "¬", "√", "⊂", "⊃", ">>", "<<", "⌊", "⌋", "⌈", "⌉", "«", "»", "→", "∣",
-    "∤",
+    "@@", "?:", "|>", "<|", "×=", "÷=", "≤", "≥", "≠", "≡", "≢", "≶", "≷", "⋀", "⋁", "⊻", "⊼", "⊽",
+    "↔", "⊨", "⊭", "∈", "∉", "⋃", "⋂", "∖", "¬", "√", "⊂", "⊃", ">>", "<<", "⌊", "⌋", "⌈", "⌉",
+    "«", "»", "→", "∣", "∤",
 ];
 
 const THREE_CHAR_OPERATORS: &[&str] = &["**=", "?:=", "<=>", ".(", "⊂⊃", "<<<", ">>>", "..."];
@@ -201,12 +205,21 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
         if let Some(operator) = match_operator(&chars, i) {
             let width = operator.chars().count();
             let operator = if operator == "→" { "->" } else { operator };
+            let mut operator_text = operator.to_owned();
+            let mut token_width = width;
+            if is_value_preserving_logical_operator(operator)
+                && i + width < chars.len()
+                && chars[i + width] == '?'
+            {
+                operator_text.push('?');
+                token_width += 1;
+            }
             tokens.push(Token::new(
-                TokenKind::Operator(operator.to_owned()),
-                Span::new(start, start + width, start_line, start_column),
+                TokenKind::Operator(operator_text),
+                Span::new(start, start + token_width, start_line, start_column),
             ));
-            i += width;
-            column += width;
+            i += token_width;
+            column += token_width;
             continue;
         }
 
@@ -232,14 +245,24 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
             }
             '.' | ':' | '?' | '+' | '-' | '*' | '/' | '_' | '=' | '<' | '>' | '!' | '&' | '|'
             | '^' | '~' | '@' | '\\' | '×' | '÷' | '≤' | '≥' | '≠' | '≡' | '≢' | '≶' | '≷'
-            | '⋀' | '⋁' | '⊻' | '⊼' | '∈' | '∉' | '⋃' | '⋂' | '∖' | '¬' | '√' | '⊂' | '⊃' | '⌊'
-            | '⌋' | '⌈' | '⌉' | '«' | '»' | '▷' | '◁' | '∣' | '∤' => {
+            | '⋀' | '⋁' | '⊻' | '⊼' | '⊽' | '↔' | '⊨' | '⊭' | '∈' | '∉' | '⋃' | '⋂' | '∖' | '¬'
+            | '√' | '⊂' | '⊃' | '⌊' | '⌋' | '⌈' | '⌉' | '«' | '»' | '▷' | '◁' | '∣' | '∤' =>
+            {
+                let mut operator_text = ch.to_string();
+                let mut token_width = 1;
+                if is_value_preserving_logical_operator(&operator_text)
+                    && i + 1 < chars.len()
+                    && chars[i + 1] == '?'
+                {
+                    operator_text.push('?');
+                    token_width += 1;
+                }
                 tokens.push(Token::new(
-                    TokenKind::Operator(ch.to_string()),
-                    Span::new(start, start + 1, start_line, start_column),
+                    TokenKind::Operator(operator_text),
+                    Span::new(start, start + token_width, start_line, start_column),
                 ));
-                i += 1;
-                column += 1;
+                i += token_width;
+                column += token_width;
             }
             '"' => {
                 let (value, end, new_line, new_column) =
@@ -307,8 +330,16 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
                 column += 1;
             }
             _ if is_identifier_start(ch) => {
-                let (value, end, end_column) = lex_identifier(&chars, i, column);
+                let (mut value, mut end, mut end_column) = lex_identifier(&chars, i, column);
                 let kind = if KEYWORDS.contains(&value.as_str()) {
+                    if is_value_preserving_logical_operator(&value)
+                        && end < chars.len()
+                        && chars[end] == '?'
+                    {
+                        value.push('?');
+                        end += 1;
+                        end_column += 1;
+                    }
                     TokenKind::Keyword(Box::leak(value.into_boxed_str()))
                 } else {
                     TokenKind::Identifier(value)
@@ -349,6 +380,28 @@ fn match_operator(chars: &[char], index: usize) -> Option<&'static str> {
         }
     }
     None
+}
+
+fn is_value_preserving_logical_operator(operator: &str) -> bool {
+    matches!(
+        operator,
+        "and"
+            | "⋀"
+            | "or"
+            | "⋁"
+            | "xor"
+            | "⊻"
+            | "xnor"
+            | "↔"
+            | "nand"
+            | "⊼"
+            | "nor"
+            | "⊽"
+            | "onlyif"
+            | "⊨"
+            | "butnot"
+            | "⊭"
+    )
 }
 
 fn matches_text(chars: &[char], index: usize, text: &str) -> bool {

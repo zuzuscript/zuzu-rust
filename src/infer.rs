@@ -385,13 +385,12 @@ fn this_infer_expression(inferencer: &mut Inferencer, expression: &mut Expressio
             this_infer_expression(inferencer, left);
             this_infer_expression(inferencer, right);
             match operator.as_str() {
-                "or" | "and" | "xor" | "nand" | "⋀" | "⋁" | "⊻" | "⊼" | "==" | "!=" | "=" | "≠"
-                | "≡" | "≢" | "<" | "<=" | ">" | ">=" | "≤" | "≥" | "eq" | "ne" | "gt" | "ge"
-                | "lt" | "le" | "eqi" | "nei" | "gti" | "gei" | "lti" | "lei" | "in" | "∈"
-                | "∉" | "subsetof" | "⊂" | "supersetof" | "⊃" | "equivalentof" | "⊂⊃"
-                | "instanceof" | "does" | "can" | "@?" | "∣" | "divides" => {
-                    Some("Boolean".to_owned())
-                }
+                "or" | "and" | "xor" | "nand" | "nor" | "xnor" | "onlyif" | "butnot" | "⋀"
+                | "⋁" | "⊻" | "⊼" | "⊽" | "↔" | "⊨" | "⊭" | "==" | "!=" | "=" | "≠" | "≡" | "≢"
+                | "<" | "<=" | ">" | ">=" | "≤" | "≥" | "eq" | "ne" | "gt" | "ge" | "lt" | "le"
+                | "eqi" | "nei" | "gti" | "gei" | "lti" | "lei" | "in" | "∈" | "∉" | "subsetof"
+                | "⊂" | "supersetof" | "⊃" | "equivalentof" | "⊂⊃" | "instanceof" | "does"
+                | "can" | "@?" | "∣" | "divides" => Some("Boolean".to_owned()),
                 "_" => Some("String".to_owned()),
                 "+" | "-" | "*" | "/" | "×" | "÷" | "mod" | "**" | "<=>" | "≶" | "≷" | "cmp"
                 | "cmpi" | "∤" => Some("Number".to_owned()),

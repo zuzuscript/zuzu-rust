@@ -21,7 +21,7 @@ struct HttpRequestSpec {
     method: String,
     url: String,
     headers: HashMap<String, String>,
-    body: Option<String>,
+    body: Option<Vec<u8>>,
     timeout: Option<Duration>,
     retries: usize,
     max_redirect: usize,
@@ -620,7 +620,7 @@ fn http_request_spec(task: HttpRequestTask) -> Result<HttpRequestSpec> {
 
     let body = if let Some(upload_from) = request_fields.get("upload_from") {
         let path = render_string(upload_from);
-        Some(fs::read_to_string(&path).map_err(|err| {
+        Some(fs::read(&path).map_err(|err| {
             ZuzuRustError::runtime(format!(
                 "HTTP request upload_from open failed for '{path}': {err}"
             ))
@@ -630,7 +630,7 @@ fn http_request_spec(task: HttpRequestTask) -> Result<HttpRequestSpec> {
             if matches!(value, Value::Null) {
                 None
             } else {
-                Some(render_string(value))
+                Some(render_string(value).into_bytes())
             }
         })
     };

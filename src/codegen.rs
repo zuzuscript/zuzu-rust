@@ -9,22 +9,23 @@ const PREC_ASSIGNMENT: u8 = 1;
 const PREC_CHAIN: u8 = 2;
 const PREC_TERNARY: u8 = 3;
 const PREC_OR: u8 = 4;
-const PREC_XOR: u8 = 5;
-const PREC_AND: u8 = 6;
-const PREC_EQUALITY: u8 = 7;
-const PREC_COMPARISON: u8 = 8;
-const PREC_BITWISE_OR: u8 = 9;
-const PREC_BITWISE_XOR: u8 = 10;
-const PREC_BITWISE_AND: u8 = 11;
-const PREC_SHIFT: u8 = 12;
-const PREC_SET: u8 = 13;
-const PREC_CONCAT: u8 = 14;
-const PREC_ADDITIVE: u8 = 15;
-const PREC_MULTIPLICATIVE: u8 = 16;
-const PREC_EXPONENT: u8 = 17;
-const PREC_PREFIX: u8 = 18;
-const PREC_POSTFIX: u8 = 19;
-const PREC_ATOM: u8 = 20;
+const PREC_ONLYIF: u8 = 5;
+const PREC_XOR: u8 = 6;
+const PREC_AND: u8 = 7;
+const PREC_EQUALITY: u8 = 8;
+const PREC_COMPARISON: u8 = 9;
+const PREC_BITWISE_OR: u8 = 10;
+const PREC_BITWISE_XOR: u8 = 11;
+const PREC_BITWISE_AND: u8 = 12;
+const PREC_SHIFT: u8 = 13;
+const PREC_SET: u8 = 14;
+const PREC_CONCAT: u8 = 15;
+const PREC_ADDITIVE: u8 = 16;
+const PREC_MULTIPLICATIVE: u8 = 17;
+const PREC_EXPONENT: u8 = 18;
+const PREC_PREFIX: u8 = 19;
+const PREC_POSTFIX: u8 = 20;
+const PREC_ATOM: u8 = 21;
 
 pub fn render_program(program: &Program) -> String {
     let mut out = String::new();
@@ -994,10 +995,13 @@ fn render_regex_literal(pattern: &str, parts: &[TemplatePart], flags: &str) -> S
 
 fn infix_precedence(operator: &str) -> u8 {
     match operator {
-        "or" | "⋁" => PREC_OR,
+        "or" | "⋁" | "or?" | "⋁?" => PREC_OR,
         "▷" | "|>" | "◁" | "<|" => PREC_CHAIN,
-        "xor" | "⊻" => PREC_XOR,
-        "and" | "⋀" | "nand" | "⊼" => PREC_AND,
+        "onlyif" | "⊨" | "onlyif?" | "⊨?" => PREC_ONLYIF,
+        "xor" | "⊻" | "xor?" | "⊻?" | "nor" | "⊽" | "nor?" | "⊽?" | "xnor" | "↔" | "xnor?"
+        | "↔?" => PREC_XOR,
+        "and" | "⋀" | "and?" | "⋀?" | "nand" | "⊼" | "nand?" | "⊼?" | "butnot" | "⊭"
+        | "butnot?" | "⊭?" => PREC_AND,
         "==" | "≡" | "!=" | "≢" | "default" => PREC_EQUALITY,
         "=" | "≠" | "<" | ">" | "<=" | "≤" | ">=" | "≥" | "<=>" | "≶" | "≷" | "eq" | "ne"
         | "gt" | "ge" | "lt" | "le" | "cmp" | "eqi" | "nei" | "gti" | "gei" | "lti" | "lei"
@@ -1018,7 +1022,10 @@ fn infix_precedence(operator: &str) -> u8 {
 }
 
 fn is_right_associative(operator: &str) -> bool {
-    operator == "**" || operator == "◁" || operator == "<|"
+    matches!(
+        operator,
+        "**" | "◁" | "<|" | "onlyif" | "⊨" | "onlyif?" | "⊨?"
+    )
 }
 
 fn preferred_render_operator(operator: &str) -> &str {

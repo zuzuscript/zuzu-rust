@@ -273,6 +273,15 @@ impl LintCollector {
     }
 
     fn collect_expression(&mut self, expression: &Expression, warnings: &mut Vec<String>) {
+        self.collect_expression_with_parent_logical_operator(expression, warnings, None);
+    }
+
+    fn collect_expression_with_parent_logical_operator(
+        &mut self,
+        expression: &Expression,
+        warnings: &mut Vec<String>,
+        parent_logical_operator: Option<&'static str>,
+    ) {
         match expression {
             Expression::ArrayLiteral { elements, .. }
             | Expression::SetLiteral { elements, .. }
@@ -324,7 +333,19 @@ impl LintCollector {
                     right.as_ref(),
                     warnings,
                 );
-                self.collect_expression(left, warnings);
+                self.record_unintuitive_logical_chain_warning(
+                    *line,
+                    operator,
+                    left.as_ref(),
+                    right.as_ref(),
+                    warnings,
+                    parent_logical_operator,
+                );
+                self.collect_expression_with_parent_logical_operator(
+                    left,
+                    warnings,
+                    canonical_logical_operator(operator),
+                );
                 self.collect_expression(right, warnings);
             }
             Expression::DefinedOr { left, right, .. } => {
@@ -642,6 +663,30 @@ impl LintCollector {
         ));
     }
 
+    fn record_unintuitive_logical_chain_warning(
+        &self,
+        line: usize,
+        operator: &str,
+        left: &Expression,
+        right: &Expression,
+        warnings: &mut Vec<String>,
+        parent_logical_operator: Option<&'static str>,
+    ) {
+        let Some(canonical) = canonical_unintuitive_logical_operator(operator) else {
+            return;
+        };
+        if parent_logical_operator == Some(canonical) {
+            return;
+        }
+        if expression_binary_operator_is(left, canonical)
+            && !expression_binary_operator_is(right, canonical)
+        {
+            warnings.push(format!(
+                "SemanticWarning at line {line}: unintuitive chained use of operator {canonical}"
+            ));
+        }
+    }
+
     fn enter_scope(&mut self) {
         self.scopes.push(HashMap::new());
     }
@@ -681,6 +726,48 @@ impl LintCollector {
                 usage.declaration_line, local_name, scope
             ));
         }
+    }
+}
+
+fn expression_binary_operator_is(expression: &Expression, canonical_operator: &str) -> bool {
+    match expression {
+        Expression::Binary { operator, .. } => {
+            canonical_logical_operator(operator) == Some(canonical_operator)
+        }
+        _ => false,
+    }
+}
+
+fn canonical_unintuitive_logical_operator(operator: &str) -> Option<&'static str> {
+    match canonical_logical_operator(operator) {
+        Some("⊼") => Some("⊼"),
+        Some("⊽") => Some("⊽"),
+        Some("↔?") => Some("↔?"),
+        Some("⊼?") => Some("⊼?"),
+        Some("⊽?") => Some("⊽?"),
+        _ => None,
+    }
+}
+
+fn canonical_logical_operator(operator: &str) -> Option<&'static str> {
+    match operator {
+        "and" | "⋀" => Some("⋀"),
+        "and?" | "⋀?" => Some("⋀?"),
+        "or" | "⋁" => Some("⋁"),
+        "or?" | "⋁?" => Some("⋁?"),
+        "xor" | "⊻" => Some("⊻"),
+        "xor?" | "⊻?" => Some("⊻?"),
+        "xnor" | "↔" => Some("↔"),
+        "xnor?" | "↔?" => Some("↔?"),
+        "nand" | "⊼" => Some("⊼"),
+        "nand?" | "⊼?" => Some("⊼?"),
+        "nor" | "⊽" => Some("⊽"),
+        "nor?" | "⊽?" => Some("⊽?"),
+        "onlyif" | "⊨" => Some("⊨"),
+        "onlyif?" | "⊨?" => Some("⊨?"),
+        "butnot" | "⊭" => Some("⊭"),
+        "butnot?" | "⊭?" => Some("⊭?"),
+        _ => None,
     }
 }
 

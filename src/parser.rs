@@ -26,20 +26,21 @@ const PREC_ASSIGNMENT: u8 = 1;
 const PREC_CHAIN: u8 = 2;
 const PREC_TERNARY: u8 = 3;
 const PREC_OR: u8 = 4;
-const PREC_XOR: u8 = 5;
-const PREC_AND: u8 = 6;
-const PREC_EQUALITY: u8 = 7;
-const PREC_COMPARISON: u8 = 8;
-const PREC_BITWISE_OR: u8 = 9;
-const PREC_BITWISE_XOR: u8 = 10;
-const PREC_BITWISE_AND: u8 = 11;
-const PREC_SHIFT: u8 = 12;
-const PREC_SET: u8 = 13;
-const PREC_CONCAT: u8 = 14;
-const PREC_ADDITIVE: u8 = 15;
-const PREC_MULTIPLICATIVE: u8 = 16;
-const PREC_EXPONENT: u8 = 17;
-const PREC_PREFIX: u8 = 18;
+const PREC_ONLYIF: u8 = 5;
+const PREC_XOR: u8 = 6;
+const PREC_AND: u8 = 7;
+const PREC_EQUALITY: u8 = 8;
+const PREC_COMPARISON: u8 = 9;
+const PREC_BITWISE_OR: u8 = 10;
+const PREC_BITWISE_XOR: u8 = 11;
+const PREC_BITWISE_AND: u8 = 12;
+const PREC_SHIFT: u8 = 13;
+const PREC_SET: u8 = 14;
+const PREC_CONCAT: u8 = 15;
+const PREC_ADDITIVE: u8 = 16;
+const PREC_MULTIPLICATIVE: u8 = 17;
+const PREC_EXPONENT: u8 = 18;
+const PREC_PREFIX: u8 = 19;
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
@@ -2160,11 +2161,14 @@ impl Parser {
             }
         }
         let entry = match text.as_str() {
-            "or" | "⋁" => Some((PREC_OR, false)),
+            "or" | "⋁" | "or?" | "⋁?" => Some((PREC_OR, false)),
             "▷" | "|>" => Some((PREC_CHAIN, false)),
             "◁" | "<|" => Some((PREC_CHAIN, true)),
-            "xor" | "⊻" => Some((PREC_XOR, false)),
-            "and" | "⋀" | "nand" | "⊼" => Some((PREC_AND, false)),
+            "onlyif" | "⊨" | "onlyif?" | "⊨?" => Some((PREC_ONLYIF, true)),
+            "xor" | "⊻" | "xor?" | "⊻?" | "nor" | "⊽" | "nor?" | "⊽?" | "xnor" | "↔" | "xnor?"
+            | "↔?" => Some((PREC_XOR, false)),
+            "and" | "⋀" | "and?" | "⋀?" | "nand" | "⊼" | "nand?" | "⊼?" | "butnot" | "⊭"
+            | "butnot?" | "⊭?" => Some((PREC_AND, false)),
             "==" | "≡" | "!=" | "≢" | "default" => Some((PREC_EQUALITY, false)),
             "=" | "≠" | "<" | ">" | "<=" | "≤" | ">=" | "≥" | "<=>" | "≶" | "≷" | "eq" | "ne"
             | "gt" | "ge" | "lt" | "le" | "cmp" | "eqi" | "nei" | "gti" | "gei" | "lti" | "lei"

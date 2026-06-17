@@ -16,9 +16,19 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 - Added shared conformance coverage for dynamic method calls whose method
   expression evaluates to either a method name or a Method value, including
   named arguments and `std/eval`.
+- Added logical operators `nor`/`⊽`, `xnor`/`↔`, `onlyif`/`⊨`,
+  `butnot`/`⊭`, plus the value-preserving `and?`/`⋀?`, `or?`/`⋁?`,
+  `xor?`/`⊻?`, `xnor?`/`↔?`, `nand?`/`⊼?`, `nor?`/`⊽?`,
+  `onlyif?`/`⊨?`, and `butnot?`/`⊭?` variants.
+- `--lint` now warns on chained uses of the less intuitive `nand`/`⊼`,
+  `nor`/`⊽`, `xnor?`/`↔?`, `nand?`/`⊼?`, and `nor?`/`⊽?`
+  logical operators.
 
 ### Fixed
 
+- `std/net/http` now reads `Request.upload_from()` payloads as bytes instead
+  of UTF-8 text, so binary request bodies such as multipart archive uploads
+  work correctly.
 - Collection parity fixes: `Array.join()` now supports an unstringable-value
   substitute or callback, `PairList.enumerate()` returns an Array of pairs, and
   `Bag.remove()` removes every matching value. Arrays now also expose
