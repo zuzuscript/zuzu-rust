@@ -1764,6 +1764,40 @@ fn debug_mode_warns_for_blocking_sync_apis_inside_async_tasks() {
 }
 
 #[test]
+fn returned_temp_path_nested_in_dict_survives_function_cleanup() {
+    let repo_root = repo_root();
+
+    let runtime = Runtime::from_repo_root(&repo_root);
+    let output = runtime
+        .run_script_source(
+            r#"
+            from std/io import Path;
+            from test/more import *;
+
+            function make_temp () {
+                let dir := Path.tempdir();
+                let child := dir.child("probe");
+                child.mkdir();
+                return { dir: dir, child: child };
+            }
+
+            let kept := make_temp();
+            ok( kept{dir}.exists(), "returned temp dir still exists" );
+            ok( kept{child}.exists(), "returned child path still exists" );
+            done_testing();
+            "#,
+        )
+        .expect("returned temp path script should run");
+
+    assert!(output.stdout.contains(concat!(
+        "ok 1 - returned temp dir still exists\n",
+        "ok 2 - returned child path still exists\n",
+        "1..2\n",
+    )));
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
 fn runs_named_args_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/functions/named-args.zzs");

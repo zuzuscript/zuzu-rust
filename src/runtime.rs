@@ -1648,7 +1648,12 @@ impl Runtime {
         self.push_special_props_scope();
         let result = self.eval_statements(&block.statements, Rc::clone(&block_env));
         if block.needs_lexical_scope {
-            self.cleanup_scope(&block_env)?;
+            match &result {
+                Ok(ControlFlow::Return(value)) | Ok(ControlFlow::Throw(value)) => {
+                    self.cleanup_scope_preserving(&block_env, &[value])?;
+                }
+                _ => self.cleanup_scope(&block_env)?,
+            }
         }
         self.pop_special_props_scope();
         result
@@ -5846,7 +5851,7 @@ impl Runtime {
     }
 
     fn finish_async_frames(&self, frames: &[AsyncFrame], value: Value) -> Result<Value> {
-        self.cleanup_async_frames(frames)?;
+        self.cleanup_async_frames_preserving(frames, &[&value])?;
         if let Some((return_type, name)) = frames.iter().find_map(|frame| match frame {
             AsyncFrame::Function {
                 return_type, name, ..
@@ -5865,9 +5870,28 @@ impl Runtime {
         Ok(())
     }
 
+    fn cleanup_async_frames_preserving(
+        &self,
+        frames: &[AsyncFrame],
+        preserved: &[&Value],
+    ) -> Result<()> {
+        for frame in frames.iter().rev() {
+            self.cleanup_async_frame_preserving(frame, preserved)?;
+        }
+        Ok(())
+    }
+
     fn cleanup_async_frame(&self, frame: &AsyncFrame) -> Result<()> {
+        self.cleanup_async_frame_preserving(frame, &[])
+    }
+
+    fn cleanup_async_frame_preserving(
+        &self,
+        frame: &AsyncFrame,
+        preserved: &[&Value],
+    ) -> Result<()> {
         match frame {
-            AsyncFrame::Function { env, .. } => self.cleanup_scope(env),
+            AsyncFrame::Function { env, .. } => self.cleanup_scope_preserving(env, preserved),
             AsyncFrame::Block {
                 env, cleanup_env, ..
             }
@@ -5875,7 +5899,7 @@ impl Runtime {
                 env, cleanup_env, ..
             } => {
                 if *cleanup_env {
-                    self.cleanup_scope(env)?;
+                    self.cleanup_scope_preserving(env, preserved)?;
                 }
                 Ok(())
             }
@@ -5926,7 +5950,12 @@ impl Runtime {
                     ControlFlow::Return(self.eval_expression(&expr, Rc::clone(&call_env))?)
                 }
             };
-            self.cleanup_scope(&call_env)?;
+            match &flow {
+                ControlFlow::Return(value) | ControlFlow::Throw(value) => {
+                    self.cleanup_scope_preserving(&call_env, &[value])?;
+                }
+                _ => self.cleanup_scope(&call_env)?,
+            }
             let value = match flow {
                 ControlFlow::Normal => Ok(Value::Null),
                 ControlFlow::Return(value) => Ok(value),
@@ -8208,11 +8237,26 @@ impl Runtime {
     }
 
     fn cleanup_scope(&self, env: &Rc<Environment>) -> Result<()> {
+        self.cleanup_scope_preserving(env, &[])
+    }
+
+    fn cleanup_scope_preserving(&self, env: &Rc<Environment>, preserved: &[&Value]) -> Result<()> {
         let bindings = env.bindings.borrow();
         let roots = bindings
             .values()
             .map(|binding| &binding.value)
             .collect::<Vec<_>>();
+        let mut protected_objects = HashSet::new();
+        let mut seen_protected_shared = HashSet::new();
+        let mut seen_protected_objects = HashSet::new();
+        for value in preserved {
+            Self::collect_protected_cleanup_objects(
+                value,
+                &mut protected_objects,
+                &mut seen_protected_shared,
+                &mut seen_protected_objects,
+            );
+        }
 
         let mut shared_refs = HashMap::new();
         let mut seen_shared = HashSet::new();
@@ -8234,6 +8278,7 @@ impl Runtime {
                 value,
                 &shared_refs,
                 &object_refs,
+                &protected_objects,
                 &mut finalizers,
                 &mut seen_objects,
                 &mut seen_shared,
@@ -8247,13 +8292,91 @@ impl Runtime {
         Ok(())
     }
 
+    fn collect_protected_cleanup_objects(
+        value: &Value,
+        protected: &mut HashSet<usize>,
+        seen_shared: &mut HashSet<usize>,
+        seen_objects: &mut HashSet<usize>,
+    ) {
+        match value {
+            Value::Object(object) => {
+                let id = Rc::as_ptr(object) as usize;
+                protected.insert(id);
+                if seen_objects.insert(id) {
+                    let fields = object.borrow();
+                    for field in fields.fields.values() {
+                        Self::collect_protected_cleanup_objects(
+                            field,
+                            protected,
+                            seen_shared,
+                            seen_objects,
+                        );
+                    }
+                }
+            }
+            Value::Shared(shared) => {
+                let id = Rc::as_ptr(shared) as usize;
+                if seen_shared.insert(id) {
+                    Self::collect_protected_cleanup_objects(
+                        &shared.borrow(),
+                        protected,
+                        seen_shared,
+                        seen_objects,
+                    );
+                }
+            }
+            Value::Array(values)
+            | Value::SystemArray(values)
+            | Value::Set(values)
+            | Value::Bag(values) => {
+                for value in values {
+                    Self::collect_protected_cleanup_objects(
+                        value,
+                        protected,
+                        seen_shared,
+                        seen_objects,
+                    );
+                }
+            }
+            Value::Dict(values) | Value::SystemDict(values) => {
+                for value in values.values() {
+                    Self::collect_protected_cleanup_objects(
+                        value,
+                        protected,
+                        seen_shared,
+                        seen_objects,
+                    );
+                }
+            }
+            Value::PairList(values) => {
+                for (_, value) in values {
+                    Self::collect_protected_cleanup_objects(
+                        value,
+                        protected,
+                        seen_shared,
+                        seen_objects,
+                    );
+                }
+            }
+            Value::Pair(_, value) => {
+                Self::collect_protected_cleanup_objects(
+                    value,
+                    protected,
+                    seen_shared,
+                    seen_objects,
+                );
+            }
+            _ => {}
+        }
+    }
+
     fn count_cleanup_shared_refs(
         &self,
         value: &Value,
         counts: &mut HashMap<usize, usize>,
         seen_shared: &mut HashSet<usize>,
     ) {
-        self.walk_cleanup_value(value, counts, None, None, None, seen_shared);
+        self.walk_cleanup_value(value, counts, None, None, None, None, seen_shared);
     }
 
     fn count_cleanup_object_refs(
@@ -8263,7 +8386,15 @@ impl Runtime {
         counts: &mut HashMap<usize, usize>,
         seen_shared: &mut HashSet<usize>,
     ) {
-        self.walk_cleanup_value(value, counts, Some(shared_refs), None, None, seen_shared);
+        self.walk_cleanup_value(
+            value,
+            counts,
+            Some(shared_refs),
+            None,
+            None,
+            None,
+            seen_shared,
+        );
     }
 
     fn collect_cleanup_finalizers(
@@ -8271,6 +8402,7 @@ impl Runtime {
         value: &Value,
         shared_refs: &HashMap<usize, usize>,
         object_refs: &HashMap<usize, usize>,
+        protected_objects: &HashSet<usize>,
         out: &mut Vec<Rc<RefCell<ObjectValue>>>,
         seen_objects: &mut HashSet<usize>,
         seen_shared: &mut HashSet<usize>,
@@ -8280,6 +8412,7 @@ impl Runtime {
             &mut HashMap::new(),
             Some(shared_refs),
             Some(object_refs),
+            Some(protected_objects),
             Some((out, seen_objects)),
             seen_shared,
         );
@@ -8291,6 +8424,7 @@ impl Runtime {
         counts: &mut HashMap<usize, usize>,
         shared_refs: Option<&HashMap<usize, usize>>,
         object_refs: Option<&HashMap<usize, usize>>,
+        protected_objects: Option<&HashSet<usize>>,
         mut finalizers: Option<(&mut Vec<Rc<RefCell<ObjectValue>>>, &mut HashSet<usize>)>,
         seen_shared: &mut HashSet<usize>,
     ) {
@@ -8299,6 +8433,7 @@ impl Runtime {
                 let id = Rc::as_ptr(object) as usize;
                 if let Some(object_refs) = object_refs {
                     if object_refs.get(&id).copied().unwrap_or(0) == Rc::strong_count(object)
+                        && !protected_objects.is_some_and(|protected| protected.contains(&id))
                         && self.object_has_method(object, "__demolish__")
                     {
                         if let Some((out, seen_objects)) = finalizers.as_mut() {
@@ -8331,6 +8466,7 @@ impl Runtime {
                         counts,
                         shared_refs,
                         object_refs,
+                        protected_objects,
                         finalizers,
                         seen_shared,
                     );
@@ -8346,6 +8482,7 @@ impl Runtime {
                         counts,
                         shared_refs,
                         object_refs,
+                        protected_objects,
                         finalizers
                             .as_mut()
                             .map(|(out, seen)| (&mut **out, &mut **seen)),
@@ -8360,6 +8497,7 @@ impl Runtime {
                         counts,
                         shared_refs,
                         object_refs,
+                        protected_objects,
                         finalizers
                             .as_mut()
                             .map(|(out, seen)| (&mut **out, &mut **seen)),
@@ -8374,6 +8512,7 @@ impl Runtime {
                         counts,
                         shared_refs,
                         object_refs,
+                        protected_objects,
                         finalizers
                             .as_mut()
                             .map(|(out, seen)| (&mut **out, &mut **seen)),
@@ -8387,6 +8526,7 @@ impl Runtime {
                     counts,
                     shared_refs,
                     object_refs,
+                    protected_objects,
                     finalizers,
                     seen_shared,
                 );
