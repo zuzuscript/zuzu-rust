@@ -8208,23 +8208,191 @@ impl Runtime {
     }
 
     fn cleanup_scope(&self, env: &Rc<Environment>) -> Result<()> {
-        let values = env
-            .bindings
-            .borrow()
+        let bindings = env.bindings.borrow();
+        let roots = bindings
             .values()
-            .map(|binding| binding.value.clone())
+            .map(|binding| &binding.value)
             .collect::<Vec<_>>();
-        for value in values {
-            if let Value::Object(object) = value {
-                if Rc::strong_count(&object) > 2 {
-                    continue;
-                }
-                if self.object_has_method(&object, "__demolish__") {
-                    let _ = self.call_object_method(&object, "__demolish__", &[], Vec::new())?;
-                }
-            }
+
+        let mut shared_refs = HashMap::new();
+        let mut seen_shared = HashSet::new();
+        for value in &roots {
+            self.count_cleanup_shared_refs(value, &mut shared_refs, &mut seen_shared);
+        }
+
+        let mut object_refs = HashMap::new();
+        let mut seen_shared = HashSet::new();
+        for value in &roots {
+            self.count_cleanup_object_refs(value, &shared_refs, &mut object_refs, &mut seen_shared);
+        }
+
+        let mut finalizers = Vec::new();
+        let mut seen_objects = HashSet::new();
+        let mut seen_shared = HashSet::new();
+        for value in &roots {
+            self.collect_cleanup_finalizers(
+                value,
+                &shared_refs,
+                &object_refs,
+                &mut finalizers,
+                &mut seen_objects,
+                &mut seen_shared,
+            );
+        }
+        drop(bindings);
+
+        for object in finalizers {
+            let _ = self.call_object_method(&object, "__demolish__", &[], Vec::new())?;
         }
         Ok(())
+    }
+
+    fn count_cleanup_shared_refs(
+        &self,
+        value: &Value,
+        counts: &mut HashMap<usize, usize>,
+        seen_shared: &mut HashSet<usize>,
+    ) {
+        self.walk_cleanup_value(value, counts, None, None, None, seen_shared);
+    }
+
+    fn count_cleanup_object_refs(
+        &self,
+        value: &Value,
+        shared_refs: &HashMap<usize, usize>,
+        counts: &mut HashMap<usize, usize>,
+        seen_shared: &mut HashSet<usize>,
+    ) {
+        self.walk_cleanup_value(value, counts, Some(shared_refs), None, None, seen_shared);
+    }
+
+    fn collect_cleanup_finalizers(
+        &self,
+        value: &Value,
+        shared_refs: &HashMap<usize, usize>,
+        object_refs: &HashMap<usize, usize>,
+        out: &mut Vec<Rc<RefCell<ObjectValue>>>,
+        seen_objects: &mut HashSet<usize>,
+        seen_shared: &mut HashSet<usize>,
+    ) {
+        self.walk_cleanup_value(
+            value,
+            &mut HashMap::new(),
+            Some(shared_refs),
+            Some(object_refs),
+            Some((out, seen_objects)),
+            seen_shared,
+        );
+    }
+
+    fn walk_cleanup_value(
+        &self,
+        value: &Value,
+        counts: &mut HashMap<usize, usize>,
+        shared_refs: Option<&HashMap<usize, usize>>,
+        object_refs: Option<&HashMap<usize, usize>>,
+        mut finalizers: Option<(&mut Vec<Rc<RefCell<ObjectValue>>>, &mut HashSet<usize>)>,
+        seen_shared: &mut HashSet<usize>,
+    ) {
+        match value {
+            Value::Object(object) => {
+                let id = Rc::as_ptr(object) as usize;
+                if let Some(object_refs) = object_refs {
+                    if object_refs.get(&id).copied().unwrap_or(0) == Rc::strong_count(object)
+                        && self.object_has_method(object, "__demolish__")
+                    {
+                        if let Some((out, seen_objects)) = finalizers.as_mut() {
+                            if seen_objects.insert(id) {
+                                out.push(Rc::clone(object));
+                            }
+                        }
+                    }
+                } else if shared_refs.is_some() {
+                    *counts.entry(id).or_insert(0) += 1;
+                }
+            }
+            Value::Shared(shared) => {
+                let id = Rc::as_ptr(shared) as usize;
+                let counting_shared_refs =
+                    shared_refs.is_none() && object_refs.is_none() && finalizers.is_none();
+                if counting_shared_refs {
+                    *counts.entry(id).or_insert(0) += 1;
+                }
+
+                if let Some(shared_refs) = shared_refs {
+                    if shared_refs.get(&id).copied().unwrap_or(0) != Rc::strong_count(shared) {
+                        return;
+                    }
+                }
+
+                if seen_shared.insert(id) {
+                    self.walk_cleanup_value(
+                        &shared.borrow(),
+                        counts,
+                        shared_refs,
+                        object_refs,
+                        finalizers,
+                        seen_shared,
+                    );
+                }
+            }
+            Value::Array(values)
+            | Value::SystemArray(values)
+            | Value::Set(values)
+            | Value::Bag(values) => {
+                for value in values {
+                    self.walk_cleanup_value(
+                        value,
+                        counts,
+                        shared_refs,
+                        object_refs,
+                        finalizers
+                            .as_mut()
+                            .map(|(out, seen)| (&mut **out, &mut **seen)),
+                        seen_shared,
+                    );
+                }
+            }
+            Value::Dict(values) | Value::SystemDict(values) => {
+                for value in values.values() {
+                    self.walk_cleanup_value(
+                        value,
+                        counts,
+                        shared_refs,
+                        object_refs,
+                        finalizers
+                            .as_mut()
+                            .map(|(out, seen)| (&mut **out, &mut **seen)),
+                        seen_shared,
+                    );
+                }
+            }
+            Value::PairList(values) => {
+                for (_, value) in values {
+                    self.walk_cleanup_value(
+                        value,
+                        counts,
+                        shared_refs,
+                        object_refs,
+                        finalizers
+                            .as_mut()
+                            .map(|(out, seen)| (&mut **out, &mut **seen)),
+                        seen_shared,
+                    );
+                }
+            }
+            Value::Pair(_, value) => {
+                self.walk_cleanup_value(
+                    value,
+                    counts,
+                    shared_refs,
+                    object_refs,
+                    finalizers,
+                    seen_shared,
+                );
+            }
+            _ => {}
+        }
     }
 
     fn make_catch_binding_value(

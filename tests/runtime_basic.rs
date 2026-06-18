@@ -999,7 +999,14 @@ fn runs_function_signatures_ztest_script() {
             "ok 6 - __argc__ tracks omitted optional args\n",
             "ok 7 - __argc__ tracks explicit null args\n",
             "ok 8 - fixed-arity functions reject missing args\n",
-            "1..8\n",
+            "ok 9 - function parameters reject assignment\n",
+            "ok 10 - function parameters reject defined-or assignment\n",
+            "ok 11 - function parameters reject compound assignment\n",
+            "ok 12 - function parameters reject update operators\n",
+            "ok 13 - anonymous function parameters reject assignment\n",
+            "ok 14 - lambda parameters reject assignment\n",
+            "ok 15 - method parameters reject assignment\n",
+            "1..15\n",
         ),
     );
     assert_eq!(output.stderr, "");
@@ -1766,7 +1773,7 @@ fn runs_named_args_ztest_script() {
         .run_script_file(&script)
         .expect("named-args.zzs should execute successfully");
 
-    assert_eq!(output.stdout.lines().count(), 47);
+    assert_eq!(output.stdout.lines().count(), 55);
     assert!(output
         .stdout
         .contains("ok 1 - named arguments became a pairlist\n"));
@@ -1776,7 +1783,7 @@ fn runs_named_args_ztest_script() {
     assert!(output
         .stdout
         .contains("ok 46 - can't pass named arguments to a function which doesn't accept them\n",));
-    assert!(output.stdout.ends_with("1..46\n"));
+    assert!(output.stdout.ends_with("1..54\n"));
     assert_eq!(output.stderr, "");
 }
 
@@ -2550,7 +2557,10 @@ let BuiltinDict := Dict;
         )
         .expect("builtin class identifiers should be available to instanceof");
 
-    assert_eq!(output.stdout, "1\n1\n1\n1\n1\n1\n1\n1\n1\n");
+    assert_eq!(
+        output.stdout,
+        "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n"
+    );
     assert_eq!(output.stderr, "");
 }
 
@@ -2612,7 +2622,16 @@ fn runs_oop_dynamic_member_call_ztest_script() {
         output.stdout,
         concat!(
             "ok 1 - dynamic member call syntax .(expr)(...) works\n",
-            "1..1\n",
+            "ok 2 - dynamic method names accept named arguments\n",
+            "ok 3 - dynamic method names accept PairList spread\n",
+            "ok 4 - dynamic Method values use the syntactic receiver\n",
+            "ok 5 - dynamic Method values ignore the original bound receiver\n",
+            "ok 6 - dynamic Method values accept PairList spread\n",
+            "ok 7 - dynamic member calls accept expression receivers\n",
+            "ok 8 - dynamic member calls evaluate the receiver once\n",
+            "ok 9 - eval preserves dynamic method names with named arguments\n",
+            "ok 10 - eval preserves dynamic Method values with named arguments\n",
+            "1..10\n",
         ),
     );
     assert_eq!(output.stderr, "");
