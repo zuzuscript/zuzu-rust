@@ -59,12 +59,24 @@ fn path_class() -> Rc<UserClassValue> {
 }
 
 pub(super) fn path_object(path: PathBuf) -> Value {
+    path_object_with_cleanup(path, None)
+}
+
+fn path_object_with_cleanup(path: PathBuf, cleanup: Option<&str>) -> Value {
+    let mut fields = HashMap::from([(
+        "path".to_owned(),
+        Value::String(path.to_string_lossy().to_string()),
+    )]);
+    if let Some(cleanup) = cleanup {
+        fields.insert(
+            "__temp_cleanup".to_owned(),
+            Value::String(cleanup.to_owned()),
+        );
+    }
+
     Value::Object(Rc::new(RefCell::new(ObjectValue {
         class: path_class(),
-        fields: HashMap::from([(
-            "path".to_owned(),
-            Value::String(path.to_string_lossy().to_string()),
-        )]),
+        fields,
         weak_fields: std::collections::HashSet::new(),
         builtin_value: Some(Value::String(path.to_string_lossy().to_string())),
     })))
@@ -120,6 +132,53 @@ pub(super) fn resolve_fs_path(_runtime: &Runtime, path: &Path) -> PathBuf {
 
 fn io_path_error(path: &Path, err: std::io::Error) -> ZuzuRustError {
     ZuzuRustError::runtime(format!("IOError: {}: {err}", path.display()))
+}
+
+fn temp_path(prefix: &str, suffix: &str, attempt: u32) -> PathBuf {
+    let mut path = std::env::temp_dir();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    path.push(format!(
+        "{prefix}-{}-{nanos}-{attempt}{suffix}",
+        std::process::id()
+    ));
+    path
+}
+
+fn create_temp_file() -> Result<PathBuf> {
+    for attempt in 0..1000 {
+        let path = temp_path("zuzu-rust", ".tmp", attempt);
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(_) => return Ok(path),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(io_path_error(&path, err)),
+        }
+    }
+
+    Err(ZuzuRustError::runtime(
+        "IOError: could not create temporary file",
+    ))
+}
+
+fn create_temp_dir() -> Result<PathBuf> {
+    for attempt in 0..1000 {
+        let path = temp_path("zuzu-rust", ".d", attempt);
+        match fs::create_dir(&path) {
+            Ok(_) => return Ok(path),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(io_path_error(&path, err)),
+        }
+    }
+
+    Err(ZuzuRustError::runtime(
+        "IOError: could not create temporary directory",
+    ))
 }
 
 fn path_cursor_key(path: &Path, raw: bool) -> String {
@@ -194,25 +253,10 @@ pub(super) fn call_class_method(
     }
     let value = match name {
         "cwd" => Ok(path_object(cwd_path())),
-        "tempfile" => {
-            let mut path = std::env::temp_dir();
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|duration| duration.as_nanos())
-                .unwrap_or(0);
-            path.push(format!("zuzu-rust-{nanos}.tmp"));
-            Ok(path_object(path))
-        }
-        "tempdir" => {
-            let mut path = std::env::temp_dir();
-            let nanos = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|duration| duration.as_nanos())
-                .unwrap_or(0);
-            path.push(format!("zuzu-rust-{nanos}.d"));
-            let _ = fs::create_dir_all(&path);
-            Ok(path_object(path))
-        }
+        "tempfile" => require_arity(name, args, 0)
+            .and_then(|_| Ok(path_object_with_cleanup(create_temp_file()?, Some("file")))),
+        "tempdir" => require_arity(name, args, 0)
+            .and_then(|_| Ok(path_object_with_cleanup(create_temp_dir()?, Some("dir")))),
         "rootdir" => {
             #[cfg(windows)]
             {
@@ -372,6 +416,7 @@ pub(super) fn has_builtin_object_method(class_name: &str, name: &str) -> bool {
                 | "realpath"
                 | "subsumes"
                 | "volume"
+                | "__demolish__"
         );
     }
     has_socket_object_method(class_name, name)
@@ -379,6 +424,7 @@ pub(super) fn has_builtin_object_method(class_name: &str, name: &str) -> bool {
 
 pub(super) fn call_object_method(
     runtime: &Runtime,
+    object: &Rc<RefCell<ObjectValue>>,
     class_name: &str,
     builtin_value: &Value,
     name: &str,
@@ -396,6 +442,19 @@ pub(super) fn call_object_method(
     let path = path_buf_from_value(builtin_value);
     let fs_path = resolve_fs_path(runtime, &path);
     let value = match name {
+        "__demolish__" => require_arity(name, args, 0).and_then(|_| {
+            let cleanup = object.borrow_mut().fields.remove("__temp_cleanup");
+            match cleanup {
+                Some(Value::String(kind)) if kind == "dir" => {
+                    let _ = fs::remove_dir_all(&fs_path);
+                }
+                Some(Value::String(kind)) if kind == "file" => {
+                    let _ = fs::remove_file(&fs_path);
+                }
+                _ => {}
+            }
+            Ok(Value::Null)
+        }),
         "to_String" => Ok(Value::String(path.to_string_lossy().to_string())),
         "child" => require_arity(name, args, 1)
             .and_then(|_| Ok(path_object(path.join(runtime.render_value(&args[0])?)))),

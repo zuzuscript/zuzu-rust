@@ -360,7 +360,7 @@ fn tap_passed(stdout: &str) -> bool {
 fn analyse_tap(stdout: &str) -> TapAnalysis {
     let mut plan = None;
     let mut top_level_tests = 0usize;
-    let mut has_top_level_not_ok = false;
+    let mut has_top_level_non_todo_not_ok = false;
     let mut plan_error = None;
 
     for line in stdout.lines().filter(|line| is_top_level_tap_line(line)) {
@@ -382,7 +382,9 @@ fn analyse_tap(stdout: &str) -> TapAnalysis {
             top_level_tests += 1;
         } else if is_top_level_not_ok_line(line) {
             top_level_tests += 1;
-            has_top_level_not_ok = true;
+            if !has_tap_directive(line, "TODO") && !has_tap_directive(line, "SKIP") {
+                has_top_level_non_todo_not_ok = true;
+            }
         }
     }
 
@@ -394,13 +396,13 @@ fn analyse_tap(stdout: &str) -> TapAnalysis {
                 "bad TAP plan: planned {planned} top-level tests, saw {top_level_tests}"
             )),
             None => Some("bad TAP plan: missing top-level plan".to_owned()),
-            _ if has_top_level_not_ok => None,
+            _ if has_top_level_non_todo_not_ok => None,
             _ => None,
         }
     };
 
     TapAnalysis {
-        passed: failure_reason.is_none() && !has_top_level_not_ok,
+        passed: failure_reason.is_none() && !has_top_level_non_todo_not_ok,
         failure_reason,
     }
 }
@@ -447,6 +449,14 @@ fn has_tap_keyword(line: &str, keyword: &str) -> bool {
             .chars()
             .next()
             .is_some_and(|ch| ch.is_ascii_whitespace())
+}
+
+fn has_tap_directive(line: &str, directive: &str) -> bool {
+    line.split('#').skip(1).any(|rest| {
+        rest.split_whitespace()
+            .next()
+            .is_some_and(|token| token.eq_ignore_ascii_case(directive))
+    })
 }
 
 fn collect_targets(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -496,4 +506,27 @@ fn collect_dir(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 
 fn is_test_script(path: &Path) -> bool {
     matches!(path.extension().and_then(|ext| ext.to_str()), Some("zzs"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::analyse_tap;
+
+    #[test]
+    fn tap_with_only_todo_failures_passes() {
+        let analysis = analyse_tap(
+            "ok 1 - setup\nnot ok 2 - fixture.dat#1#script-off # TODO documented gap\n1..2\n",
+        );
+
+        assert!(analysis.passed);
+        assert_eq!(analysis.failure_reason, None);
+    }
+
+    #[test]
+    fn tap_with_non_todo_failure_fails() {
+        let analysis = analyse_tap("ok 1 - setup\nnot ok 2 - regression\n1..2\n");
+
+        assert!(!analysis.passed);
+        assert_eq!(analysis.failure_reason, None);
+    }
 }

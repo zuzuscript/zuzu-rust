@@ -805,6 +805,57 @@ impl Runtime {
         ))
     }
 
+    fn value_is_nullish(&self, value: &Value) -> Result<bool> {
+        self.value_is_nullish_inner(value, 0)
+    }
+
+    fn value_is_nullish_inner(&self, value: &Value, depth: usize) -> Result<bool> {
+        if depth > 32 {
+            return Err(ZuzuRustError::runtime(
+                "reference dereference recursion limit reached",
+            ));
+        }
+        match value {
+            Value::Null => Ok(true),
+            Value::WeakFunction(value) => Ok(value.upgrade().is_none()),
+            Value::WeakNativeFunction(value) => Ok(value.upgrade().is_none()),
+            Value::WeakMethod(value) => Ok(value.upgrade().is_none()),
+            Value::WeakIterator(value) => Ok(value.upgrade().is_none()),
+            Value::WeakClass(value) => Ok(value.upgrade().is_none()),
+            Value::WeakUserClass(value) => Ok(value.upgrade().is_none()),
+            Value::WeakTrait(value) => Ok(value.upgrade().is_none()),
+            Value::WeakObject(value) => Ok(value.upgrade().is_none()),
+            Value::WeakTask(value) => Ok(value.upgrade().is_none()),
+            Value::WeakChannel(value) => Ok(value.upgrade().is_none()),
+            Value::WeakCancellationSource(value) => Ok(value.upgrade().is_none()),
+            Value::WeakCancellationToken(value) => Ok(value.upgrade().is_none()),
+            Value::WeakShared(value) => {
+                let Some(value) = value.upgrade() else {
+                    return Ok(true);
+                };
+                let result = self.value_is_nullish_inner(&value.borrow(), depth + 1);
+                result
+            }
+            Value::WeakRef(value) | Value::WeakAliasRef(value) => {
+                let Some(reference) = value.upgrade() else {
+                    return Ok(true);
+                };
+                let value = self.call_ref(reference, Vec::new(), Vec::new())?;
+                self.value_is_nullish_inner(&value, depth + 1)
+            }
+            Value::WeakStoredScalar(value) => self.value_is_nullish_inner(value, depth + 1),
+            Value::Ref(reference) | Value::AliasRef(reference) => {
+                let value = self.call_ref(Rc::clone(reference), Vec::new(), Vec::new())?;
+                self.value_is_nullish_inner(&value, depth + 1)
+            }
+            Value::Shared(value) => {
+                let result = self.value_is_nullish_inner(&value.borrow(), depth + 1);
+                result
+            }
+            _ => Ok(false),
+        }
+    }
+
     pub(in crate::runtime) fn normalize_value(&self, value: Value) -> Result<Value> {
         match value {
             value if value.is_weak_value() => self.deref_value(&value),
@@ -2738,10 +2789,10 @@ impl Runtime {
             }
             Expression::DefinedOr { left, right, .. } => {
                 let left_value = self.eval_expression(left, Rc::clone(&env))?;
-                if self.value_is_truthy(&left_value)? {
-                    Ok(left_value)
-                } else {
+                if self.value_is_nullish(&left_value)? {
                     self.eval_expression(right, env)
+                } else {
+                    Ok(left_value)
                 }
             }
             Expression::Assignment {

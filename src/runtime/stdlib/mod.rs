@@ -198,7 +198,7 @@ pub(super) fn call_builtin_object_method(
         })
         .or_else(|| db::call_object_method(runtime, class_name, builtin_value, name, args))
         .or_else(|| clib::call_object_method(runtime, class_name, builtin_value, name, args))
-        .or_else(|| io::call_object_method(runtime, class_name, builtin_value, name, args))
+        .or_else(|| io::call_object_method(runtime, object, class_name, builtin_value, name, args))
         .or_else(|| csv::call_object_method(runtime, object, class_name, builtin_value, name, args))
         .or_else(|| json::call_object_method(runtime, class_name, builtin_value, name, args))
         .or_else(|| {
