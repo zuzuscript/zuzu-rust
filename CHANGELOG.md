@@ -14,6 +14,8 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 - `Path.tempfile()` and `Path.tempdir()` now attach lifecycle cleanup to the
   returned `Path` object, deleting temporary files and recursively deleting
   temporary directories when `__demolish__` would run.
+- Returned temporary `Path` objects are now preserved during scope cleanup
+  when they remain reachable through a function or block return value.
 - `zuzu-rust-run-tests` now treats TAP `not ok ... # TODO` lines as expected
   TODO failures instead of failing the whole test file.
 
