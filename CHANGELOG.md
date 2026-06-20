@@ -7,10 +7,13 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ## Unreleased
 
-### Fixed
+### Added
 
 - Switch case and default bodies now have access to the active switch value
   via `^^`, including when falling through multiple case sections.
+
+### Fixed
+
 - Runtime module search no longer probes source-checkout directories such as
   `modules`, `languagetests/lang/modules`, `stdlib/modules`, or
   `stdlib/test-modules` automatically. Tests now pass required checkout module
