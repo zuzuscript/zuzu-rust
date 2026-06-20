@@ -1778,6 +1778,7 @@ impl Runtime {
             }
         }
         let mut matched = false;
+        let mut fell_through = false;
         for case in &node.cases {
             if !matched {
                 for (index, value) in case.values.iter().enumerate() {
@@ -1801,16 +1802,22 @@ impl Runtime {
                 let case_env = Rc::new(Environment::new(Some(Rc::clone(&switch_env))));
                 match self.eval_statements(&case.consequent, case_env)? {
                     ControlFlow::Normal => return Ok(ControlFlow::Normal),
-                    ControlFlow::Continue => continue,
+                    ControlFlow::Continue => {
+                        fell_through = true;
+                        continue;
+                    }
                     other => return Ok(other),
                 }
             }
         }
-        if matched {
+        if matched && fell_through {
             if let Some(default) = &node.default {
-                let default_env = Rc::new(Environment::new(Some(Rc::clone(&switch_env))));
+                let default_env = Rc::new(Environment::new(Some(switch_env)));
                 return self.eval_statements(default, default_env);
             }
+            return Ok(ControlFlow::Normal);
+        }
+        if matched {
             return Ok(ControlFlow::Normal);
         }
         if let Some(default) = &node.default {

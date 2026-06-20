@@ -14,6 +14,8 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ### Fixed
 
+- `switch` no longer executes the `default` block after a matched case unless
+  fall-through was requested with `continue`.
 - Runtime module search no longer probes source-checkout directories such as
   `modules`, `languagetests/lang/modules`, `stdlib/modules`, or
   `stdlib/test-modules` automatically. Tests now pass required checkout module
