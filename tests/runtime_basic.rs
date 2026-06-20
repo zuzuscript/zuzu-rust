@@ -157,7 +157,7 @@ fn load_program_without_main_does_not_call_main() {
 #[test]
 fn load_program_without_main_allows_top_level_imports() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let program = parse_program(
         r#"
         from std/io import Path;
@@ -347,7 +347,7 @@ fn runs_basic_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/basic.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("basic.zzs should execute successfully");
@@ -377,7 +377,7 @@ fn runs_collection_operator_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/operators/collection-operators.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("collection-operators.zzs should execute successfully");
@@ -814,7 +814,7 @@ fn system_global_rejects_dict_mutation() {
 #[test]
 fn outer_execution_continues_after_inner_block_scope_ends() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -841,7 +841,7 @@ fn outer_execution_continues_after_inner_block_scope_ends() {
 #[test]
 fn zero_arg_dot_syntax_invokes_method_instead_of_reading_property() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -860,7 +860,8 @@ fn zero_arg_dot_syntax_invokes_method_instead_of_reading_property() {
 #[test]
 fn no_sema_runtime_rejects_direct_dot_method_lvalues() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root).with_parse_options(false, false);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")])
+        .with_parse_options(false, false);
 
     for source in [
         r#"
@@ -909,7 +910,7 @@ fn no_sema_runtime_rejects_direct_dot_method_lvalues() {
 #[test]
 fn new_expression_allows_postfix_member_calls() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -942,7 +943,7 @@ fn runs_string_more_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/operators/string-more.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("string-more.zzs should execute successfully");
@@ -983,7 +984,7 @@ fn runs_function_signatures_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/functions/signatures.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("signatures.zzs should execute successfully");
@@ -1017,7 +1018,7 @@ fn runs_lambda_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/functions/lambdas.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("lambdas.zzs should execute successfully");
@@ -1043,7 +1044,7 @@ fn runs_lambda_ztest_script() {
 #[test]
 fn std_path_z_query_helpers_keep_full_nodesets() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -1078,7 +1079,7 @@ fn std_path_z_query_helpers_keep_full_nodesets() {
 #[test]
 fn std_string_chr_ord_roundtrip_unicode_scalars() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -1098,20 +1099,20 @@ fn std_string_chr_ord_roundtrip_unicode_scalars() {
 #[test]
 fn runs_switch_ztest_scripts() {
     let repo_root = repo_root();
-    let switch_output = Runtime::from_repo_root(&repo_root)
+    let switch_output = Runtime::new(vec![repo_root.join("stdlib").join("modules")])
         .run_script_file(&repo_root.join("languagetests/lang/control/switch.zzs"))
         .expect("switch.zzs should execute successfully");
     assert_eq!(
         switch_output.stdout,
         concat!(
-            "ok 1 - switch :eq comparator and continue work\n",
+            "ok 1 - switch continue and ^^ work\n",
             "ok 2 - switch :~ comparator supports regexp cases\n",
             "ok 3 - switch supports numeric case matching\n",
             "1..3\n",
         ),
     );
 
-    let more_output = Runtime::from_repo_root(&repo_root)
+    let more_output = Runtime::new(vec![repo_root.join("stdlib").join("modules")])
         .run_script_file(&repo_root.join("languagetests/lang/control/switch-more.zzs"))
         .expect("switch-more.zzs should execute successfully");
     assert_eq!(
@@ -1125,7 +1126,7 @@ fn runs_switch_ztest_scripts() {
         ),
     );
 
-    let operators_output = Runtime::from_repo_root(&repo_root)
+    let operators_output = Runtime::new(vec![repo_root.join("stdlib").join("modules")])
         .run_script_file(&repo_root.join("languagetests/lang/control/switch-case-operators.zzs"))
         .expect("switch-case-operators.zzs should execute successfully");
     assert_eq!(
@@ -1159,7 +1160,7 @@ fn runs_loops_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/control/loops.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("loops.zzs should execute successfully");
@@ -1195,7 +1196,7 @@ fn runs_phase_a_concurrency_contract_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/concurrency/phase-a.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("phase-a.zzs should execute successfully");
@@ -1222,7 +1223,7 @@ fn runs_phase_a_concurrency_contract_ztest_script() {
 fn timeout_task_expires_while_executor_runs_unrelated_sleep() {
     let repo_root = repo_root();
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_source(
             r#"
@@ -1273,7 +1274,7 @@ fn timeout_task_expires_while_executor_runs_unrelated_sleep() {
 #[test]
 fn await_rejects_non_task_block_result() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let err = match runtime.run_script_source(
         r#"
@@ -1302,7 +1303,7 @@ fn await_rejects_non_task_block_result() {
 fn sleep_tasks_overlap_under_task_all() {
     let repo_root = repo_root();
 
-    let single_runtime = Runtime::from_repo_root(&repo_root);
+    let single_runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let single_start = Instant::now();
     let single_output = single_runtime
         .run_script_source(
@@ -1321,7 +1322,7 @@ fn sleep_tasks_overlap_under_task_all() {
     let single_elapsed = single_start.elapsed();
     assert_eq!(single_output.stdout, "single\n");
 
-    let pair_runtime = Runtime::from_repo_root(&repo_root);
+    let pair_runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let pair_start = Instant::now();
     let pair_output = pair_runtime
         .run_script_source(
@@ -1351,7 +1352,7 @@ fn sleep_tasks_overlap_under_task_all() {
 fn run_async_processes_overlap_under_task_all() {
     let repo_root = repo_root();
 
-    let single_runtime = Runtime::from_repo_root(&repo_root);
+    let single_runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let single_start = Instant::now();
     let single_output = single_runtime
         .run_script_source(
@@ -1373,7 +1374,7 @@ fn run_async_processes_overlap_under_task_all() {
     let single_elapsed = single_start.elapsed();
     assert_eq!(single_output.stdout, "single\n");
 
-    let pair_runtime = Runtime::from_repo_root(&repo_root);
+    let pair_runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let pair_start = Instant::now();
     let pair_output = pair_runtime
         .run_script_source(
@@ -1412,7 +1413,7 @@ fn run_async_processes_overlap_under_task_all() {
 fn pipeline_async_streams_between_running_processes() {
     let repo_root = repo_root();
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let start = Instant::now();
     let output = runtime
         .run_script_source(
@@ -1454,7 +1455,7 @@ fn pipeline_async_streams_between_running_processes() {
 fn run_async_timeout_and_combinator_cancellation() {
     let repo_root = repo_root();
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_source(
             r#"
@@ -1519,7 +1520,7 @@ fn get_async_requests_overlap_under_task_all() {
         return;
     };
 
-    let single_runtime = Runtime::from_repo_root(&repo_root);
+    let single_runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let single_start = Instant::now();
     let single_output = single_runtime
         .run_script_source(&format!(
@@ -1539,7 +1540,7 @@ fn get_async_requests_overlap_under_task_all() {
     let single_elapsed = single_start.elapsed();
     assert_eq!(single_output.stdout, "200\n");
 
-    let pair_runtime = Runtime::from_repo_root(&repo_root);
+    let pair_runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let pair_start = Instant::now();
     let pair_output = pair_runtime
         .run_script_source(&format!(
@@ -1574,7 +1575,7 @@ fn get_async_requests_overlap_under_task_all() {
 fn path_async_methods_return_pending_tasks() {
     let repo_root = repo_root();
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_source(
             r#"
@@ -1639,7 +1640,7 @@ fn path_async_methods_return_pending_tasks() {
 fn native_async_tasks_cancel_with_cancelled_exception() {
     let repo_root = repo_root();
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_source(
             r#"
@@ -1724,8 +1725,10 @@ fn native_async_tasks_cancel_with_cancelled_exception() {
 fn debug_mode_warns_for_blocking_sync_apis_inside_async_tasks() {
     let repo_root = repo_root();
 
-    let runtime =
-        Runtime::from_repo_root_with_policy(&repo_root, RuntimePolicy::new().debug_level(1));
+    let runtime = Runtime::with_policy(
+        vec![repo_root.join("stdlib").join("modules")],
+        RuntimePolicy::new().debug_level(1),
+    );
     let output = runtime
         .run_script_source(
             r#"
@@ -1767,7 +1770,7 @@ fn debug_mode_warns_for_blocking_sync_apis_inside_async_tasks() {
 fn returned_temp_path_nested_in_dict_survives_function_cleanup() {
     let repo_root = repo_root();
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_source(
             r#"
@@ -1802,7 +1805,7 @@ fn runs_named_args_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/functions/named-args.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("named-args.zzs should execute successfully");
@@ -2062,7 +2065,7 @@ fn runs_field_accessors_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/oop/field-accessors.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("field-accessors.zzs should execute successfully");
@@ -2087,7 +2090,7 @@ fn runs_method_returns_global_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/oop/method-returns-global.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("method-returns-global.zzs should execute successfully");
@@ -2112,7 +2115,7 @@ fn runs_assignment_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/operators/assignment.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("assignment.zzs should execute successfully");
@@ -2155,7 +2158,7 @@ fn runs_assignment_ztest_script() {
 #[test]
 fn weak_storage_declarations_assignments_and_fields_work() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -2247,7 +2250,7 @@ fn runs_weak_collection_methods_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/weak/collection-methods.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("collection-methods.zzs should execute successfully");
@@ -2264,7 +2267,7 @@ fn runs_weak_collection_methods_ztest_script() {
 #[test]
 fn weak_collection_methods_drop_and_overwrite_entries() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -2529,7 +2532,7 @@ fn runs_binary_string_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/operators/binary-string.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("binary-string.zzs should execute successfully");
@@ -2552,7 +2555,7 @@ fn runs_type_instanceof_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/types/instanceof.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("types/instanceof.zzs should execute successfully");
@@ -2603,7 +2606,7 @@ fn runs_type_return_types_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/types/return-types.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("types/return-types.zzs should execute successfully");
@@ -2627,7 +2630,7 @@ fn runs_type_tostring_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/types/tostring.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("types/tostring.zzs should execute successfully");
@@ -2647,7 +2650,7 @@ fn runs_oop_dynamic_member_call_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/oop/dynamic-member-call.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("dynamic-member-call.zzs should execute successfully");
@@ -2676,7 +2679,7 @@ fn runs_oop_inheritance_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/oop/inheritance.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("inheritance.zzs should execute successfully");
@@ -2697,7 +2700,7 @@ fn runs_oop_traits_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/oop/traits.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("traits.zzs should execute successfully");
@@ -2723,7 +2726,7 @@ fn runs_oop_ambiguous_classes_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/oop/ambiguous-classes.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("ambiguous-classes.zzs should execute successfully");
@@ -2743,7 +2746,7 @@ fn runs_oop_super_and_static_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("languagetests/lang/oop/super-and-static.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("super-and-static.zzs should execute successfully");
@@ -2765,7 +2768,7 @@ fn runs_std_clib_ztest_script() {
     let repo_root = repo_root();
     let script = repo_root.join("stdlib/tests/std/clib.zzs");
 
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
     let output = runtime
         .run_script_file(&script)
         .expect("std/clib.zzs should execute successfully");
@@ -2895,7 +2898,7 @@ fn std_clib_reports_binding_descriptor_and_call_errors() {
 
 fn assert_std_clib_source_error(source: &str, needle: &str) {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let err = match runtime.run_script_source(source) {
         Ok(_) => panic!("expected std/clib source to fail"),
@@ -2910,7 +2913,7 @@ fn assert_std_clib_source_error(source: &str, needle: &str) {
 #[test]
 fn std_marshal_exports_public_api_and_exceptions() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -2984,7 +2987,7 @@ fn std_marshal_exports_public_api_and_exceptions() {
 #[test]
 fn std_marshal_round_trips_phase25_data_graphs() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -3058,7 +3061,7 @@ fn std_marshal_round_trips_phase25_data_graphs() {
 #[test]
 fn std_time_methods_are_available_for_time() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -3108,7 +3111,7 @@ fn std_time_methods_are_available_for_time() {
 #[test]
 fn std_marshal_preserves_weak_storage_records() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(
@@ -3160,7 +3163,7 @@ fn std_marshal_preserves_weak_storage_records() {
 #[test]
 fn std_marshal_round_trips_user_objects_and_lifecycle_hooks() {
     let repo_root = repo_root();
-    let runtime = Runtime::from_repo_root(&repo_root);
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
 
     let output = runtime
         .run_script_source(

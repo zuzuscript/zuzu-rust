@@ -2630,7 +2630,7 @@ mod tests {
 
     #[test]
     fn round_trip_preserves_self_cyclic_array_identity() {
-        let runtime = Runtime::from_repo_root(&repo_root());
+        let runtime = Runtime::new(vec![repo_root().join("stdlib").join("modules")]);
         let cell = Rc::new(RefCell::new(Value::Array(Vec::new())));
         let root = Value::Shared(Rc::clone(&cell));
         *cell.borrow_mut() = Value::Array(vec![root.clone()]);
@@ -2654,7 +2654,7 @@ mod tests {
 
     #[test]
     fn loads_perl_phase25_data_golden_fixtures() {
-        let runtime = Runtime::from_repo_root(&repo_root());
+        let runtime = Runtime::new(vec![repo_root().join("stdlib").join("modules")]);
 
         assert!(matches!(
             load_binary(&runtime, &fixture_bytes("scalar-null")).expect("scalar fixture"),
@@ -2700,7 +2700,7 @@ mod tests {
 
     #[test]
     fn loads_perl_object_instance_golden_fixture() {
-        let runtime = Runtime::from_repo_root(&repo_root());
+        let runtime = Runtime::new(vec![repo_root().join("stdlib").join("modules")]);
         let object =
             load_binary(&runtime, &fixture_bytes("object-instance")).expect("object fixture");
         let Value::Object(object) = object else {
@@ -2715,7 +2715,7 @@ mod tests {
 
     #[test]
     fn loads_perl_code_table_golden_fixtures() {
-        let runtime = Runtime::from_repo_root(&repo_root());
+        let runtime = Runtime::new(vec![repo_root().join("stdlib").join("modules")]);
 
         let function = load_binary(&runtime, &fixture_bytes("function")).expect("function fixture");
         let result = runtime
@@ -2747,7 +2747,7 @@ mod tests {
 
     #[test]
     fn loader_accepts_weak_storage_records_in_stored_positions() {
-        let runtime = Runtime::from_repo_root(&repo_root());
+        let runtime = Runtime::new(vec![repo_root().join("stdlib").join("modules")]);
         let root_weak = test_envelope(
             CborValue::Array(vec![CborValue::Integer(1), CborValue::Null]),
             Vec::new(),
@@ -2785,7 +2785,7 @@ mod tests {
 
     #[test]
     fn weak_scalar_collection_entries_dump_as_weak_records() {
-        let runtime = Runtime::from_repo_root(&repo_root());
+        let runtime = Runtime::new(vec![repo_root().join("stdlib").join("modules")]);
         let root = Value::Array(vec![Value::Boolean(true).stored_with_weak_policy(true)]);
         let envelope = encode_envelope(&runtime, &root).expect("weak scalar should encode");
 

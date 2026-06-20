@@ -566,8 +566,6 @@ pub fn module_search_roots(include_dirs: Vec<PathBuf>) -> Vec<PathBuf> {
         .map(|path| absolutize_module_path(path, &initial_cwd))
         .collect::<Vec<_>>();
 
-    roots.extend(source_checkout_module_dirs(&initial_cwd));
-
     if let Some(zuzulib) = std::env::var_os("ZUZULIB") {
         roots.extend(
             std::env::split_paths(&zuzulib).map(|path| absolutize_module_path(path, &initial_cwd)),
@@ -593,29 +591,6 @@ pub fn module_search_roots(include_dirs: Vec<PathBuf>) -> Vec<PathBuf> {
     }
 
     dedup_paths(roots)
-}
-
-fn source_checkout_module_dirs(start: &Path) -> Vec<PathBuf> {
-    let mut current = start.to_path_buf();
-    loop {
-        let candidates = [
-            current.join("modules"),
-            current.join("languagetests").join("lang").join("modules"),
-            current.join("stdlib").join("modules"),
-            current.join("stdlib").join("test-modules"),
-        ];
-        let roots = candidates
-            .into_iter()
-            .filter(|path| path.is_dir())
-            .collect::<Vec<_>>();
-        if !roots.is_empty() {
-            return roots;
-        }
-        if !current.pop() {
-            break;
-        }
-    }
-    Vec::new()
 }
 
 fn absolutize_module_path(path: PathBuf, base: &Path) -> PathBuf {
@@ -713,17 +688,6 @@ impl Runtime {
                 async_executor: AsyncExecutor::new(),
             }),
         }
-    }
-
-    pub fn from_repo_root(repo_root: &Path) -> Self {
-        Self::new(module_search_roots(source_checkout_module_dirs(repo_root)))
-    }
-
-    pub fn from_repo_root_with_policy(repo_root: &Path, policy: RuntimePolicy) -> Self {
-        Self::with_policy(
-            module_search_roots(source_checkout_module_dirs(repo_root)),
-            policy,
-        )
     }
 
     pub fn with_parse_options(mut self, run_sema: bool, infer_types: bool) -> Self {
@@ -1804,10 +1768,12 @@ impl Runtime {
         env: Rc<Environment>,
     ) -> Result<ControlFlow> {
         let discriminant = self.eval_expression(&node.discriminant, Rc::clone(&env))?;
+        let switch_env = Rc::new(Environment::new(Some(env)));
+        switch_env.define("^^".to_owned(), discriminant.clone(), false);
         if let Some(index) = &node.index {
             for key in self.switch_index_keys(&discriminant) {
                 if let Some(entry) = index.iter().find(|entry| entry.key == key) {
-                    return self.eval_switch_cases_from(node, entry.case_index, env);
+                    return self.eval_switch_cases_from(node, entry.case_index, switch_env);
                 }
             }
         }
@@ -1820,14 +1786,19 @@ impl Runtime {
                         .get(index)
                         .and_then(|value| value.as_deref())
                         .or(node.comparator.as_deref());
-                    if self.switch_matches(&discriminant, value, operator, Rc::clone(&env))? {
+                    if self.switch_matches(
+                        &discriminant,
+                        value,
+                        operator,
+                        Rc::clone(&switch_env),
+                    )? {
                         matched = true;
                         break;
                     }
                 }
             }
             if matched {
-                let case_env = Rc::new(Environment::new(Some(Rc::clone(&env))));
+                let case_env = Rc::new(Environment::new(Some(Rc::clone(&switch_env))));
                 match self.eval_statements(&case.consequent, case_env)? {
                     ControlFlow::Normal => return Ok(ControlFlow::Normal),
                     ControlFlow::Continue => continue,
@@ -1837,13 +1808,13 @@ impl Runtime {
         }
         if matched {
             if let Some(default) = &node.default {
-                let default_env = Rc::new(Environment::new(Some(env)));
+                let default_env = Rc::new(Environment::new(Some(Rc::clone(&switch_env))));
                 return self.eval_statements(default, default_env);
             }
             return Ok(ControlFlow::Normal);
         }
         if let Some(default) = &node.default {
-            let default_env = Rc::new(Environment::new(Some(env)));
+            let default_env = Rc::new(Environment::new(Some(switch_env)));
             return self.eval_statements(default, default_env);
         }
         Ok(ControlFlow::Normal)

@@ -1377,32 +1377,31 @@ impl Validator {
             }
             Statement::SwitchStatement(node) => {
                 self.validate_expression(&node.discriminant, context)?;
-                for case in &node.cases {
-                    for value in &case.values {
-                        self.validate_expression(value, context)?;
-                    }
-                    self.with_scope(|this| {
+                self.with_scope(|this| {
+                    this.declare_name("^^", node.line, false)?;
+                    for case in &node.cases {
+                        for value in &case.values {
+                            this.validate_expression(value, context)?;
+                        }
                         this.validate_statements(
                             &case.consequent,
                             Context {
                                 in_switch: true,
                                 ..context
                             },
-                        )
-                    })?;
-                }
-                if let Some(default) = &node.default {
-                    self.with_scope(|this| {
+                        )?;
+                    }
+                    if let Some(default) = &node.default {
                         this.validate_statements(
                             default,
                             Context {
                                 in_switch: true,
                                 ..context
                             },
-                        )
-                    })?;
-                }
-                Ok(())
+                        )?;
+                    }
+                    Ok(())
+                })
             }
             Statement::TryStatement(node) => {
                 self.validate_statement(&Statement::Block(node.body.clone()), context)?;

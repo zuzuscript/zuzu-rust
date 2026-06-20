@@ -157,8 +157,8 @@ fn collection_presize_metadata_counts_expanded_ranges() {
 
     let root = repo_root();
     for level in [OptimizationLevel::O0, OptimizationLevel::O1] {
-        let runtime =
-            Runtime::from_repo_root(&root).with_optimization_options(optimization_options(level));
+        let runtime = Runtime::new(vec![root.join("stdlib").join("modules")])
+            .with_optimization_options(optimization_options(level));
         let output = runtime
             .run_script_source(source)
             .expect("collection source should execute");
@@ -205,8 +205,8 @@ fn constant_propagation_preserves_mutating_runtime_semantics() {
     let root = repo_root();
 
     for level in [OptimizationLevel::O0, OptimizationLevel::O2] {
-        let runtime =
-            Runtime::from_repo_root(&root).with_optimization_options(optimization_options(level));
+        let runtime = Runtime::new(vec![root.join("stdlib").join("modules")])
+            .with_optimization_options(optimization_options(level));
         let output = runtime
             .run_script_source(source)
             .expect("mutating source should execute");
@@ -394,8 +394,8 @@ fn lowered_range_array_loops_match_runtime_semantics() {
     let root = repo_root();
 
     for level in [OptimizationLevel::O0, OptimizationLevel::O3] {
-        let runtime =
-            Runtime::from_repo_root(&root).with_optimization_options(optimization_options(level));
+        let runtime = Runtime::new(vec![root.join("stdlib").join("modules")])
+            .with_optimization_options(optimization_options(level));
         let output = runtime
             .run_script_source(source)
             .expect("range loop source should execute");
@@ -422,8 +422,8 @@ fn runtime_output_matches_across_optimization_levels() {
         OptimizationLevel::O2,
         OptimizationLevel::O3,
     ] {
-        let runtime =
-            Runtime::from_repo_root(&root).with_optimization_options(optimization_options(level));
+        let runtime = Runtime::new(vec![root.join("stdlib").join("modules")])
+            .with_optimization_options(optimization_options(level));
         let output = runtime
             .run_script_source(source)
             .expect("source should execute");
@@ -444,7 +444,7 @@ fn constant_propagation_keeps_loop_mutations_live() {
     "#;
     let root = repo_root();
 
-    let runtime = Runtime::from_repo_root(&root)
+    let runtime = Runtime::new(vec![root.join("stdlib").join("modules")])
         .with_optimization_options(optimization_options(OptimizationLevel::O1));
     let output = runtime
         .run_script_source(source)
@@ -465,7 +465,7 @@ fn constant_propagation_respects_regex_replacement_scope() {
     "#;
     let root = repo_root();
 
-    let runtime = Runtime::from_repo_root(&root)
+    let runtime = Runtime::new(vec![root.join("stdlib").join("modules")])
         .with_optimization_options(optimization_options(OptimizationLevel::O1));
     let output = runtime
         .run_script_source(source)
@@ -491,7 +491,7 @@ fn identifier_resolution_falls_back_when_runtime_method_frames_differ() {
     "#;
     let root = repo_root();
 
-    let runtime = Runtime::from_repo_root(&root)
+    let runtime = Runtime::new(vec![root.join("stdlib").join("modules")])
         .with_optimization_options(optimization_options(OptimizationLevel::O2));
     let output = runtime
         .run_script_source(source)
