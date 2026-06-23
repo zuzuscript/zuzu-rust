@@ -1799,8 +1799,7 @@ impl Runtime {
                 }
             }
             if matched {
-                let case_env = Rc::new(Environment::new(Some(Rc::clone(&switch_env))));
-                match self.eval_statements(&case.consequent, case_env)? {
+                match self.eval_statements(&case.consequent, Rc::clone(&switch_env))? {
                     ControlFlow::Normal => return Ok(ControlFlow::Normal),
                     ControlFlow::Continue => {
                         fell_through = true;
@@ -1812,8 +1811,7 @@ impl Runtime {
         }
         if matched && fell_through {
             if let Some(default) = &node.default {
-                let default_env = Rc::new(Environment::new(Some(switch_env)));
-                return self.eval_statements(default, default_env);
+                return self.eval_statements(default, switch_env);
             }
             return Ok(ControlFlow::Normal);
         }
@@ -1821,8 +1819,7 @@ impl Runtime {
             return Ok(ControlFlow::Normal);
         }
         if let Some(default) = &node.default {
-            let default_env = Rc::new(Environment::new(Some(switch_env)));
-            return self.eval_statements(default, default_env);
+            return self.eval_statements(default, Rc::clone(&switch_env));
         }
         Ok(ControlFlow::Normal)
     }
@@ -1834,16 +1831,14 @@ impl Runtime {
         env: Rc<Environment>,
     ) -> Result<ControlFlow> {
         for case in node.cases.iter().skip(start) {
-            let case_env = Rc::new(Environment::new(Some(Rc::clone(&env))));
-            match self.eval_statements(&case.consequent, case_env)? {
+            match self.eval_statements(&case.consequent, Rc::clone(&env))? {
                 ControlFlow::Normal => return Ok(ControlFlow::Normal),
                 ControlFlow::Continue => continue,
                 other => return Ok(other),
             }
         }
         if let Some(default) = &node.default {
-            let default_env = Rc::new(Environment::new(Some(env)));
-            return self.eval_statements(default, default_env);
+            return self.eval_statements(default, env);
         }
         Ok(ControlFlow::Normal)
     }
@@ -9729,6 +9724,7 @@ mod weak_classification_tests {
         BlockStatement {
             line: 0,
             source_file: None,
+            end_line: 0,
             statements: Vec::new(),
             needs_lexical_scope: false,
         }

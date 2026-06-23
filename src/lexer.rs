@@ -103,6 +103,10 @@ const TWO_CHAR_OPERATORS: &[&str] = &[
 const THREE_CHAR_OPERATORS: &[&str] = &["**=", "?:=", "<=>", ".(", "⊂⊃", "<<<", ">>>", "..."];
 
 pub fn lex(source: &str) -> Result<Vec<Token>> {
+    lex_with_comments(source, false)
+}
+
+pub fn lex_with_comments(source: &str, preserve_comments: bool) -> Result<Vec<Token>> {
     let chars: Vec<char> = source.chars().collect();
     let mut tokens = Vec::new();
     let mut i = 0usize;
@@ -111,6 +115,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
 
     while i < chars.len() {
         let ch = chars[i];
+        let start = i;
+        let start_line = line;
+        let start_column = column;
 
         if i == 0 && ch == '#' && i + 1 < chars.len() && chars[i + 1] == '!' {
             i += 2;
@@ -144,9 +151,17 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
         if ch == '/' && i + 1 < chars.len() && chars[i + 1] == '/' {
             i += 2;
             column += 2;
+            let comment_start = i;
             while i < chars.len() && chars[i] != '\n' {
                 i += 1;
                 column += 1;
+            }
+            if preserve_comments {
+                let comment_text: String = chars[comment_start..i].iter().collect();
+                    tokens.push(Token::new(
+                    TokenKind::Comment(comment_text),
+                    Span::new(start, i, start_line, start_column),
+                ));
             }
             continue;
         }
@@ -170,10 +185,6 @@ pub fn lex(source: &str) -> Result<Vec<Token>> {
             }
             continue;
         }
-
-        let start = i;
-        let start_line = line;
-        let start_column = column;
 
         if ch == '/' && can_start_regex(&tokens) {
             let (pattern, parts, flags, end, new_line, new_column) =
@@ -1102,6 +1113,7 @@ fn can_start_regex(tokens: &[Token]) -> bool {
         | TokenKind::String(_)
         | TokenKind::BinaryString(_)
         | TokenKind::Template(_)
+        | TokenKind::Comment(_)
         | TokenKind::Eof => false,
     }
 }

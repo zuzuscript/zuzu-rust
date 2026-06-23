@@ -7,6 +7,7 @@ pub enum TokenKind {
     Number(String),
     String(String),
     BinaryString(Vec<u8>),
+    Comment(String),
     Regex {
         pattern: String,
         parts: Vec<TemplatePart>,

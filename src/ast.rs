@@ -3,6 +3,15 @@ pub struct Program {
     pub line: usize,
     pub source_file: Option<String>,
     pub statements: Vec<Statement>,
+    pub lint_directives: Vec<LintDirective>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LintDirective {
+    pub line: usize,
+    pub inline: bool,
+    pub for_block: bool,
+    pub codes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +41,7 @@ pub enum Statement {
 pub struct BlockStatement {
     pub line: usize,
     pub source_file: Option<String>,
+    pub end_line: usize,
     pub statements: Vec<Statement>,
     pub needs_lexical_scope: bool,
 }
@@ -715,6 +725,7 @@ impl BlockStatement {
         write_object_start(out);
         write_string_field(out, indent + 1, "type", "BlockStatement", true);
         write_number_field(out, indent + 1, "line", self.line, true);
+        write_number_field(out, indent + 1, "end_line", self.end_line, true);
         write_bool_field(
             out,
             indent + 1,

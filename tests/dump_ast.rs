@@ -276,6 +276,27 @@ fn parses_phase_a_expression_forms() {
 }
 
 #[test]
+fn parses_dict_access_word_key_as_string_key() {
+    let source = r#"foo{bar};"#;
+    let program = parse_syntax_only(source).expect("dict-access word key should parse");
+    let json = program.to_json_pretty();
+
+    assert!(json.contains("\"type\": \"DictAccessExpression\""));
+    assert!(json.contains("\"type\": \"StringKey\""));
+    assert!(json.contains("\"value\": \"bar\""));
+}
+
+#[test]
+fn parses_dict_access_unicode_word_key_as_string_key() {
+    let source = r#"foo{héllo};"#;
+    let program = parse_syntax_only(source).expect("unicode dict-access word key should parse");
+    let json = program.to_json_pretty();
+
+    assert!(json.contains("\"type\": \"StringKey\""));
+    assert!(json.contains("\"value\": \"héllo\""));
+}
+
+#[test]
 fn dumps_spread_call_arguments_as_structured_nodes() {
     let source = r#"
         let got := target( 1, ...items, label: "x", length: 2, ...{{ extra: 3 }} );

@@ -5,17 +5,116 @@ use crate::ast::{
     IfStatement, ImportDeclaration, ImportSpecifier, KeywordStatement, LoopControlStatement,
     MethodDeclaration, Parameter, PostfixCondition, PostfixConditionalStatement, Program,
     ReturnStatement, Statement, SwitchCase, SwitchStatement, TemplatePart as AstTemplatePart,
-    ThrowStatement, TraitDeclaration, TryStatement, VariableDeclaration, VariableUnpackDeclaration,
-    WhileStatement,
+    ThrowStatement, TraitDeclaration, TryStatement, VariableDeclaration,
+    VariableUnpackDeclaration, WhileStatement, LintDirective,
 };
 use crate::error::{Result, ZuzuRustError};
 use crate::token::{TemplatePart as TokenTemplatePart, Token, TokenKind};
 use std::collections::HashSet;
 
+fn parse_lint_directives(tokens: &[Token]) -> Vec<LintDirective> {
+    let mut directives = Vec::new();
+
+    for (index, token) in tokens.iter().enumerate() {
+        let TokenKind::Comment(text) = &token.kind else {
+            continue;
+        };
+        let Some((codes, for_block)) = parse_lint_directive_comment(text) else {
+            continue;
+        };
+        if codes.is_empty() {
+            continue;
+        }
+
+        let line = token.span.line;
+        let inline = tokens
+            .iter()
+            .take(index)
+            .any(|token| {
+                token.span.line == line && !matches!(token.kind, TokenKind::Comment(_))
+            });
+
+        directives.push(LintDirective {
+            line,
+            inline,
+            for_block,
+            codes,
+        });
+    }
+
+    directives
+}
+
+fn parse_lint_directive_comment(comment: &str) -> Option<(Vec<String>, bool)> {
+    let comment = comment.trim();
+    if comment.is_empty() {
+        return None;
+    }
+
+    let mut parts = comment
+        .split(|ch: char| ch.is_whitespace() || ch == ',')
+        .filter(|part| !part.is_empty());
+
+    let first = parts.next()?;
+    if !first.eq_ignore_ascii_case("allow") {
+        return None;
+    }
+
+    let mut codes = Vec::new();
+    let mut for_block = false;
+    let mut parts = parts.peekable();
+    while let Some(part) = parts.next() {
+        if part.eq_ignore_ascii_case("because") {
+            break;
+        }
+        if part.eq_ignore_ascii_case("for") {
+            if let Some(next) = parts.peek() {
+                if next.eq_ignore_ascii_case("block") {
+                    for_block = true;
+                    parts.next();
+                    continue;
+                }
+            }
+            continue;
+        }
+        if part.eq_ignore_ascii_case("block") {
+            continue;
+        }
+        if is_identifier_like_word(part) {
+            codes.push(part.to_ascii_uppercase());
+        }
+    }
+
+    if codes.is_empty() {
+        return None;
+    }
+
+    Some((codes, for_block))
+}
+
+fn is_identifier_like_word(text: &str) -> bool {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if first.is_numeric() {
+        return false;
+    }
+    if !is_word_char(first) {
+        return false;
+    }
+    chars.all(is_word_char)
+}
+
+fn is_word_char(ch: char) -> bool {
+    ch == '_' || ch.is_alphanumeric()
+}
+
 pub struct Parser {
     tokens: Vec<Token>,
     index: usize,
     source_file: Option<String>,
+    lint_directives: Vec<LintDirective>,
     // Closers of set literals currently being parsed: ">>" and "»" are
     // also shift operators, so the innermost pending closer must not be
     // consumed as an infix operator.
@@ -44,21 +143,57 @@ const PREC_PREFIX: u8 = 19;
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
+        Self::new_with_comments(tokens, false)
+    }
+
+    pub(crate) fn new_with_comments(tokens: Vec<Token>, preserve_comments: bool) -> Self {
+        let lint_directives = if preserve_comments {
+            parse_lint_directives(&tokens)
+        } else {
+            Vec::new()
+        };
+        let tokens = tokens
+            .into_iter()
+            .filter(|token| !matches!(token.kind, TokenKind::Comment(_)))
+            .collect();
         Self {
             tokens,
             index: 0,
             source_file: None,
+            lint_directives,
             pending_set_closers: Vec::new(),
         }
     }
 
     pub fn with_source_file(tokens: Vec<Token>, source_file: impl Into<String>) -> Self {
+        Self::with_source_file_and_comments(tokens, source_file, false)
+    }
+
+    pub fn with_source_file_and_comments(
+        tokens: Vec<Token>,
+        source_file: impl Into<String>,
+        preserve_comments: bool,
+    ) -> Self {
+        let lint_directives = if preserve_comments {
+            parse_lint_directives(&tokens)
+        } else {
+            Vec::new()
+        };
+        let tokens = tokens
+            .into_iter()
+            .filter(|token| !matches!(token.kind, TokenKind::Comment(_)))
+            .collect();
         Self {
             tokens,
             index: 0,
             source_file: Some(source_file.into()),
+            lint_directives,
             pending_set_closers: Vec::new(),
         }
+    }
+
+    pub fn lint_directives(&self) -> &[LintDirective] {
+        &self.lint_directives
     }
 
     fn source_file(&self) -> Option<String> {
@@ -80,6 +215,7 @@ impl Parser {
             line,
             source_file: self.source_file(),
             statements,
+            lint_directives: self.lint_directives.clone(),
         })
     }
 
@@ -149,6 +285,7 @@ impl Parser {
                     body: BlockStatement {
                         line: statement.line(),
                         source_file: statement.source_file().map(str::to_owned),
+                        end_line: statement.line(),
                         statements: vec![statement],
                         needs_lexical_scope: false,
                     },
@@ -183,9 +320,11 @@ impl Parser {
             self.consume_semicolons();
         }
         self.expect_punct('}', "Expected '}' after block")?;
+        let end_line = self.previous_line();
         Ok(BlockStatement {
             line,
             source_file: self.source_file(),
+            end_line,
             statements,
             needs_lexical_scope: true,
         })
@@ -195,6 +334,7 @@ impl Parser {
         BlockStatement {
             line,
             source_file: self.source_file(),
+            end_line: line,
             statements: Vec::new(),
             needs_lexical_scope: true,
         }
@@ -1962,20 +2102,20 @@ impl Parser {
     }
 
     fn parse_dict_key_until_rbrace(&mut self) -> Result<DictKey> {
+        let next_token_is_rbrace = self
+            .tokens
+            .get(self.index + 1)
+            .is_some_and(|token| matches!(token.kind, TokenKind::Punct('}')));
+
         match self.current_kind() {
             TokenKind::Identifier(name) => {
-                if self
-                    .tokens
-                    .get(self.index + 1)
-                    .map(|token| matches!(token.kind, TokenKind::Punct('}')))
-                    .unwrap_or(false)
-                {
+                if is_identifier_like_word(name) && next_token_is_rbrace {
                     let name = name.clone();
                     self.advance();
-                    Ok(DictKey::Identifier {
+                    Ok(DictKey::StringLiteral {
                         line: self.previous_line(),
                         source_file: self.source_file(),
-                        name,
+                        value: name,
                     })
                 } else {
                     let line = self.current_line();
@@ -1988,18 +2128,13 @@ impl Parser {
                 }
             }
             TokenKind::Keyword(value) => {
-                if self
-                    .tokens
-                    .get(self.index + 1)
-                    .map(|token| matches!(token.kind, TokenKind::Punct('}')))
-                    .unwrap_or(false)
-                {
+                if is_identifier_like_word(value) && next_token_is_rbrace {
                     let name = (*value).to_owned();
                     self.advance();
-                    Ok(DictKey::Identifier {
+                    Ok(DictKey::StringLiteral {
                         line: self.previous_line(),
                         source_file: self.source_file(),
-                        name,
+                        value: name,
                     })
                 } else {
                     let line = self.current_line();
@@ -2494,6 +2629,7 @@ fn token_text(kind: &TokenKind) -> String {
         TokenKind::Operator(value) => value.clone(),
         TokenKind::Punct(value) => value.to_string(),
         TokenKind::Eof => "<eof>".to_owned(),
+        TokenKind::Comment(_) => "<comment>".to_owned(),
     }
 }
 

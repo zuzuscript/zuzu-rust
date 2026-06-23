@@ -638,7 +638,7 @@ impl LintCollector {
             return;
         };
         warnings.push(format!(
-            "SemanticWarning at line {line}: prefer 'instanceof' for runtime type checks instead of 'typeof ... {operator} \"{type_name}\"'"
+            "SemanticWarning at line {line}: prefer 'instanceof' for runtime type checks instead of 'typeof ... {operator} \"{type_name}\"' [TYPEOF]"
         ));
     }
 
@@ -659,7 +659,7 @@ impl LintCollector {
             return;
         }
         warnings.push(format!(
-            "SemanticWarning at line {line}: comparing to null with '{operator}' is fragile; use a type-aware null comparison operator"
+            "SemanticWarning at line {line}: comparing to null with '{operator}' is fragile; use a type-aware null comparison operator [NULLCMP]"
         ));
     }
 
@@ -682,7 +682,7 @@ impl LintCollector {
             && !expression_binary_operator_is(right, canonical)
         {
             warnings.push(format!(
-                "SemanticWarning at line {line}: unintuitive chained use of operator {canonical}"
+                "SemanticWarning at line {line}: unintuitive chained use of operator {canonical} [UNINTLOG]"
             ));
         }
     }
@@ -696,7 +696,7 @@ impl LintCollector {
         for (name, state) in scope {
             if !state.is_reassigned {
                 warnings.push(format!(
-                    "SemanticWarning at line {}: '{}' can be declared with const",
+                    "SemanticWarning at line {}: '{}' can be declared with const [CONSTIFY]",
                     state.line, name
                 ));
             }
@@ -722,7 +722,7 @@ impl LintCollector {
             }
             let scope = used_scopes.remove(0);
             warnings.push(format!(
-                "SemanticWarning at line {}: imported symbol '{}' is only used inside {}; consider moving this import into that function/method",
+                "SemanticWarning at line {}: imported symbol '{}' is only used inside {}; consider moving this import into that function/method [TOPIMPORT]",
                 usage.declaration_line, local_name, scope
             ));
         }
@@ -824,7 +824,7 @@ fn check_if_chain_switch_warning(chain: &[&IfStatement]) -> Option<String> {
     }
     comparator.map(|_| {
         format!(
-            "SemanticWarning at line {}: multiple else-if comparisons over the same term can be expressed as a switch",
+            "SemanticWarning at line {}: multiple else-if comparisons over the same term can be expressed as a switch [SWITCHLIKE]",
             chain[0].line
         )
     })
@@ -1216,7 +1216,7 @@ fn collect_weak_decl_warning(
         return;
     }
     warnings.push(format!(
-        "SemanticWarning at line {line}: 'but weak' on {declared_type} binding '{name}' has no effect because {declared_type} values are scalar"
+        "SemanticWarning at line {line}: 'but weak' on {declared_type} binding '{name}' has no effect because {declared_type} values are scalar [WEAKSCALAR]"
     ));
 }
 

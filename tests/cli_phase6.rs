@@ -692,3 +692,88 @@ fn cli_lint_suggests_moving_top_level_import_into_single_callable_scope() {
     let multiple_scopes_stderr = String::from_utf8_lossy(&multiple_scopes.stderr);
     assert!(!multiple_scopes_stderr.contains("imported symbol 'helper' is only used inside"));
 }
+
+#[test]
+fn cli_lint_allows_comment_inline_warning_suppression() {
+    let source = r#"
+        let value := null;
+        if (typeof value == "String" and value = null) { } // allow TYPEOF, NULLCMP
+    "#;
+
+    let output = run_zuzu(&["--lint", "-e", source], &repo_root());
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("prefer 'instanceof'"));
+    assert!(!stderr.contains("fragile; use a type-aware null comparison operator"));
+}
+
+#[test]
+fn cli_lint_applies_next_line_comment_allow_directive() {
+    let source = r#"
+        let value := null;
+
+        // allow TYPEOF
+        if (typeof value == "String") { }
+    "#;
+
+    let output = run_zuzu(&["--lint", "-e", source], &repo_root());
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("prefer 'instanceof'"));
+}
+
+#[test]
+fn cli_lint_applies_for_block_comment_allow_directive_to_next_block() {
+    let source = r#"
+        let value := null;
+
+        // allow TYPEOF for block
+        {
+            if (typeof value == "String") { }
+        }
+
+        if (typeof value == "String") { }
+    "#;
+
+    let output = run_zuzu(&["--lint", "-e", source], &repo_root());
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(stderr.matches("prefer 'instanceof'").count(), 1);
+}
+
+#[test]
+fn cli_lint_allows_reason_text_and_for_block_directive() {
+    let dir = temp_dir("lint-directive-reason");
+    let lib = dir.join("lib");
+    let module_dir = lib.join("acme");
+    fs::create_dir_all(&module_dir).expect("module dir should be created");
+    fs::write(
+        module_dir.join("tool.zzm"),
+        r#"
+        function helper () {
+            return null;
+        }
+        "#,
+    )
+    .expect("module file should be written");
+    let include_arg = format!("-I{}", lib.display());
+
+    let source =
+        "from acme/tool import helper; function use_helper () { if (typeof helper() == \"String\") { } } // allow TYPEOF, TOPIMPORT because noise suppression";
+
+    let output = run_zuzu(
+        &["--lint", &include_arg, "-e", source],
+        &repo_root(),
+    );
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("prefer 'instanceof'"));
+    assert!(!stderr.contains("imported symbol 'helper' is only used inside"));
+}

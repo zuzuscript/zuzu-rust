@@ -12,6 +12,15 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 - Switch case and default bodies now have access to the active switch value
   via `^^`, including when falling through multiple case sections.
 
+### Changed
+
+- `switch` execution in `runtime.rs` now evaluates matching case/default
+  blocks in a single switch scope so the bound `^^` value is shared across
+  the entire switch and no longer re-created per case.
+- Lint diagnostics now emit warning class codes in square brackets (for
+  example `NULLCMP`, `TOPIMPORT`, `TYPEOF`) and support
+  comment-based suppression directives.
+
 ### Fixed
 
 - `switch` no longer executes the `default` block after a matched case unless
@@ -20,6 +29,10 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
   `modules`, `languagetests/lang/modules`, `stdlib/modules`, or
   `stdlib/test-modules` automatically. Tests now pass required checkout module
   roots explicitly instead.
+- Parser now treats identifier-like dictionary keys inside `{...}` member-access
+  braces as string keys, avoiding spurious undefined-local warnings for
+  expressions like `foo{bar}` while preserving identifier parsing where
+  braces contain non-identifier expressions.
 
 ## 0.6.0 - 2026-06-19
 

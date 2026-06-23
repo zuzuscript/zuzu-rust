@@ -23,6 +23,7 @@ pub struct ParseOptions {
     pub run_sema: bool,
     pub infer_types: bool,
     pub optimizations: OptimizationOptions,
+    pub preserve_comments: bool,
 }
 
 impl Default for ParseOptions {
@@ -31,6 +32,7 @@ impl Default for ParseOptions {
             run_sema: true,
             infer_types: true,
             optimizations: OptimizationOptions::default(),
+            preserve_comments: false,
         }
     }
 }
@@ -41,7 +43,13 @@ impl ParseOptions {
             run_sema,
             infer_types,
             optimizations,
+            preserve_comments: false,
         }
+    }
+
+    pub fn with_comments(mut self, preserve_comments: bool) -> Self {
+        self.preserve_comments = preserve_comments;
+        self
     }
 }
 
@@ -82,10 +90,23 @@ pub fn parse_program_with_compile_options_and_source_file(
     options: &ParseOptions,
     source_file: Option<&str>,
 ) -> Result<Program> {
-    let tokens = lexer::lex(source).map_err(|err| err.with_source_file(source_file))?;
+    let tokens = lexer::lex_with_comments(source, options.preserve_comments)
+        .map_err(|err| err.with_source_file(source_file))?;
     let mut parser = match source_file {
-        Some(source_file) => parser::Parser::with_source_file(tokens, source_file),
-        None => parser::Parser::new(tokens),
+        Some(source_file) => {
+            if options.preserve_comments {
+                parser::Parser::with_source_file_and_comments(tokens, source_file, true)
+            } else {
+                parser::Parser::with_source_file(tokens, source_file)
+            }
+        }
+        None => {
+            if options.preserve_comments {
+                parser::Parser::new_with_comments(tokens, true)
+            } else {
+                parser::Parser::new(tokens)
+            }
+        }
     };
     let mut program = parser
         .parse_program()

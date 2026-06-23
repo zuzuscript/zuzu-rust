@@ -8,6 +8,7 @@ use zuzu_rust::{
     module_search_roots, optimizer, parse_program_with_compile_options, OptimizationLevel,
     OptimizationOptions, ParseOptions, Result, Runtime, RuntimePolicy, ZuzuRustError,
 };
+use zuzu_rust::ast::{BlockStatement, ClassMember, LintDirective, Statement};
 
 fn main() -> ExitCode {
     match run() {
@@ -259,6 +260,7 @@ fn run() -> Result<()> {
         let source_file = script_path.as_ref().map(|path| path.to_owned());
         let options = if lint_mode {
             ParseOptions::new(run_sema, infer_types, OptimizationOptions::disabled())
+                .with_comments(true)
         } else {
             ParseOptions::new(run_sema, infer_types, optimizations.clone())
         };
@@ -269,7 +271,11 @@ fn run() -> Result<()> {
         )?;
         if run_sema {
             let warnings = if lint_mode {
-                zuzu_rust::sema::lint_warnings(&program)
+                filter_lint_warnings(
+                    zuzu_rust::sema::lint_warnings(&program),
+                    program.lint_directives.as_slice(),
+                    &collect_block_spans(&program.statements),
+                )
             } else {
                 zuzu_rust::sema::weak_storage_warnings(&program)
             };
@@ -304,6 +310,193 @@ fn run() -> Result<()> {
         _ => unreachable!(),
     };
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct BlockSpan {
+    start: usize,
+    end: usize,
+}
+
+fn collect_block_spans(statements: &[Statement]) -> Vec<BlockSpan> {
+    let mut spans = Vec::new();
+    collect_block_spans_from_statements(statements, &mut spans);
+    spans
+}
+
+fn collect_block_spans_from_statements(
+    statements: &[Statement],
+    spans: &mut Vec<BlockSpan>,
+) {
+    for statement in statements {
+        collect_block_spans_from_statement(statement, spans);
+    }
+}
+
+fn collect_block_spans_from_statement(statement: &Statement, spans: &mut Vec<BlockSpan>) {
+    match statement {
+        Statement::Block(block) => collect_block_spans_from_block(block, spans),
+        Statement::FunctionDeclaration(node) => {
+            collect_block_spans_from_block(&node.body, spans);
+        }
+        Statement::ClassDeclaration(node) => {
+            for member in &node.body {
+                collect_block_spans_from_class_member(member, spans);
+            }
+        }
+        Statement::TraitDeclaration(node) => {
+            for member in &node.body {
+                collect_block_spans_from_class_member(member, spans);
+            }
+        }
+        Statement::IfStatement(node) => {
+            collect_block_spans_from_block(&node.consequent, spans);
+            if let Some(alternate) = &node.alternate {
+                collect_block_spans_from_statement(alternate, spans);
+            }
+        }
+        Statement::WhileStatement(node) => {
+            collect_block_spans_from_block(&node.body, spans);
+        }
+        Statement::ForStatement(node) => {
+            collect_block_spans_from_block(&node.body, spans);
+            if let Some(else_block) = &node.else_block {
+                collect_block_spans_from_block(else_block, spans);
+            }
+        }
+        Statement::SwitchStatement(node) => {
+            for case in &node.cases {
+                collect_block_spans_from_statements(&case.consequent, spans);
+            }
+            if let Some(default) = &node.default {
+                collect_block_spans_from_statements(default, spans);
+            }
+        }
+        Statement::TryStatement(node) => {
+            collect_block_spans_from_block(&node.body, spans);
+            for handler in &node.handlers {
+                collect_block_spans_from_block(&handler.body, spans);
+            }
+        }
+        Statement::PostfixConditionalStatement(node) => {
+            collect_block_spans_from_statement(&node.statement, spans)
+        }
+        Statement::VariableDeclaration(_)
+        | Statement::VariableUnpackDeclaration(_)
+        | Statement::ImportDeclaration(_)
+        | Statement::ReturnStatement(_)
+        | Statement::LoopControlStatement(_)
+        | Statement::ThrowStatement(_)
+        | Statement::DieStatement(_)
+        | Statement::KeywordStatement(_)
+        | Statement::ExpressionStatement(_) => {}
+    }
+}
+
+fn collect_block_spans_from_class_member(member: &ClassMember, spans: &mut Vec<BlockSpan>) {
+    match member {
+        ClassMember::Method(method) => {
+            collect_block_spans_from_block(&method.body, spans);
+        }
+        ClassMember::Class(node) => {
+            for member in &node.body {
+                collect_block_spans_from_class_member(member, spans);
+            }
+        }
+        ClassMember::Trait(node) => {
+            for member in &node.body {
+                collect_block_spans_from_class_member(member, spans);
+            }
+        }
+        ClassMember::Field(_) => {}
+    }
+}
+
+fn collect_block_spans_from_block(block: &BlockStatement, spans: &mut Vec<BlockSpan>) {
+    spans.push(BlockSpan {
+        start: block.line,
+        end: block.end_line,
+    });
+    collect_block_spans_from_statements(&block.statements, spans);
+}
+
+fn filter_lint_warnings(
+    warnings: Vec<String>,
+    directives: &[LintDirective],
+    block_spans: &[BlockSpan],
+) -> Vec<String> {
+    warnings
+        .into_iter()
+        .filter(|warning| !is_warning_suppressed(warning, directives, block_spans))
+        .collect()
+}
+
+fn is_warning_suppressed(
+    warning: &str,
+    directives: &[LintDirective],
+    block_spans: &[BlockSpan],
+) -> bool {
+    let Some((line, code)) = parse_warning_line_and_code(warning) else {
+        return false;
+    };
+    for directive in directives {
+        if !directive
+            .codes
+            .iter()
+            .any(|known| known.eq_ignore_ascii_case(&code))
+        {
+            continue;
+        }
+        if directive.for_block {
+            if matches_block_span(block_spans, directive.line, line) {
+                return true;
+            }
+            continue;
+        }
+        if directive.inline {
+            if directive.line == line {
+                return true;
+            }
+            continue;
+        }
+        if directive.line + 1 == line {
+            return true;
+        }
+    }
+    false
+}
+
+fn matches_block_span(block_spans: &[BlockSpan], directive_line: usize, warning_line: usize) -> bool {
+    let next_line = directive_line + 1;
+    for span in block_spans {
+        if span.start == directive_line || span.start == next_line {
+            if warning_line >= span.start && warning_line <= span.end {
+                return true;
+            }
+            return false;
+        }
+    }
+    false
+}
+
+fn parse_warning_line_and_code(message: &str) -> Option<(usize, String)> {
+    let Some(line_start) = message.find("SemanticWarning at line ") else {
+        return None;
+    };
+    let remainder = &message[line_start + "SemanticWarning at line ".len()..];
+    let Some(colon) = remainder.find(':') else {
+        return None;
+    };
+    let line: usize = remainder[..colon].trim().parse().ok()?;
+
+    let open = message.rfind('[')?;
+    let close = message.rfind(']')?;
+    if close <= open {
+        return None;
+    }
+    let code = message[open + 1..close].to_ascii_uppercase();
+
+    Some((line, code))
 }
 
 fn print_help() {

@@ -1125,6 +1125,7 @@ fn lower_range_array_loop(statement: &Statement) -> Option<Statement> {
         body: BlockStatement {
             line,
             source_file: source_file.clone(),
+            end_line: line,
             statements: body_statements,
             needs_lexical_scope: true,
         },
@@ -1150,6 +1151,7 @@ fn lower_range_array_loop(statement: &Statement) -> Option<Statement> {
     Some(Statement::Block(BlockStatement {
         line,
         source_file,
+        end_line: line,
         statements,
         needs_lexical_scope: true,
     }))
