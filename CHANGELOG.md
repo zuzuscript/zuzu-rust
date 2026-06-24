@@ -11,6 +11,9 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 - Switch case and default bodies now have access to the active switch value
   via `^^`, including when falling through multiple case sections.
+- `--lint` now reports top-level imported symbols that are never referenced
+  anywhere in the program (`[UNUSEDIMPORT]`), replacing the equivalent
+  `unused-import` check previously only available in zuzu-lsp.
 
 ### Changed
 

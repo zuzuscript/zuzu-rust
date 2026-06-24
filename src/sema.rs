@@ -717,6 +717,13 @@ impl LintCollector {
                 .filter(|(_, count)| **count > 0)
                 .map(|(scope, _)| scope)
                 .collect::<Vec<_>>();
+            if used_scopes.is_empty() {
+                warnings.push(format!(
+                    "SemanticWarning at line {}: imported symbol '{}' is never used [UNUSEDIMPORT]",
+                    usage.declaration_line, local_name
+                ));
+                continue;
+            }
             if used_scopes.len() != 1 {
                 continue;
             }

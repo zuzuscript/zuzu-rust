@@ -694,6 +694,51 @@ fn cli_lint_suggests_moving_top_level_import_into_single_callable_scope() {
 }
 
 #[test]
+fn cli_lint_reports_unused_imports() {
+    let dir = temp_dir("lint-unused-import");
+    let lib = dir.join("lib");
+    let module_dir = lib.join("acme");
+    fs::create_dir_all(&module_dir).expect("module dir should be created");
+    fs::write(
+        module_dir.join("tool.zzm"),
+        r#"
+        function helper () {
+            return 1;
+        }
+        "#,
+    )
+    .expect("module file should be written");
+    let include_arg = format!("-I{}", lib.display());
+
+    let unused = run_zuzu(
+        &[
+            "--lint",
+            &include_arg,
+            "-e",
+            "from acme/tool import helper;",
+        ],
+        &repo_root(),
+    );
+    assert!(unused.status.success());
+    let unused_stderr = String::from_utf8_lossy(&unused.stderr);
+    assert!(unused_stderr.contains("imported symbol 'helper' is never used"));
+    assert!(unused_stderr.contains("[UNUSEDIMPORT]"));
+
+    let used = run_zuzu(
+        &[
+            "--lint",
+            &include_arg,
+            "-e",
+            "from acme/tool import helper; helper();",
+        ],
+        &repo_root(),
+    );
+    assert!(used.status.success());
+    let used_stderr = String::from_utf8_lossy(&used.stderr);
+    assert!(!used_stderr.contains("imported symbol 'helper' is never used"));
+}
+
+#[test]
 fn cli_lint_allows_comment_inline_warning_suppression() {
     let source = r#"
         let value := null;
