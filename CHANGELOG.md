@@ -17,6 +17,8 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ### Changed
 
+- `std/string.sprint` now uses a printf-compatible formatter for a wider range
+  of conversion specifications.
 - `switch` execution in `runtime.rs` now evaluates matching case/default
   blocks in a single switch scope so the bound `^^` value is shared across
   the entire switch and no longer re-created per case.
@@ -28,6 +30,9 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 - `switch` no longer executes the `default` block after a matched case unless
   fall-through was requested with `continue`.
+- `say` now renders IEEE infinities as `Inf` and `-Inf`.
+- `std/proc` now inherits stdout/stderr when output capture is disabled for
+  synchronous and asynchronous process runs.
 - Runtime module search no longer probes source-checkout directories such as
   `modules`, `languagetests/lang/modules`, `stdlib/modules`, or
   `stdlib/test-modules` automatically. Tests now pass required checkout module

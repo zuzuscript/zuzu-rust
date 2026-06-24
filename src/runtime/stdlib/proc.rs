@@ -80,7 +80,7 @@ fn proc_exit(args: &[Value]) -> Result<Value> {
             return Err(ZuzuRustError::runtime(format!(
                 "TypeException: Proc.exit expects Number, got {}",
                 value.type_name()
-            )))
+            )));
         }
     };
     std::process::exit(code);
@@ -184,25 +184,36 @@ fn proc_run(runtime: &Runtime, args: &[Value]) -> Result<Value> {
         command.stderr(Stdio::piped());
     }
 
-    let output = if options.stdin.is_empty() {
-        command.output()
-    } else {
+    let needs_output = options.capture_stdout || options.capture_stderr || options.merge_stderr;
+    let output = {
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(err) => {
                 return Ok(process_error_result(
                     &command_parts,
                     process_spawn_error("Proc.run failed", &cwd, err),
-                ))
+                ));
             }
         };
-        if let Some(mut child_stdin) = child.stdin.take() {
-            use std::io::Write;
-            child_stdin
-                .write_all(options.stdin.as_bytes())
-                .map_err(|err| ZuzuRustError::runtime(format!("Proc.run stdin failed: {err}")))?;
+        if !options.stdin.is_empty() {
+            if let Some(mut child_stdin) = child.stdin.take() {
+                use std::io::Write;
+                child_stdin
+                    .write_all(options.stdin.as_bytes())
+                    .map_err(|err| {
+                        ZuzuRustError::runtime(format!("Proc.run stdin failed: {err}"))
+                    })?;
+            }
         }
-        child.wait_with_output()
+        if needs_output {
+            child.wait_with_output()
+        } else {
+            child.wait().map(|status| std::process::Output {
+                status,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            })
+        }
     };
 
     match output {
@@ -482,7 +493,7 @@ async fn run_pipeline_async(
             Err(err) => {
                 return Err(ZuzuRustError::runtime(format!(
                     "Proc.pipeline pipe task failed: {err}"
-                )))
+                )));
             }
         }
     }
@@ -646,7 +657,7 @@ async fn run_process_async(spec: ProcRunSpec, cancel_requested: Rc<Cell<bool>>) 
             return Ok(process_error_result(
                 &spec.command_parts,
                 process_spawn_error("Proc.run failed", &spec.cwd, err),
-            ))
+            ));
         }
     };
     if !spec.options.stdin.is_empty() {
@@ -659,7 +670,24 @@ async fn run_process_async(spec: ProcRunSpec, cancel_requested: Rc<Cell<bool>>) 
     }
 
     let started = std::time::Instant::now();
-    let mut output = Box::pin(child.wait_with_output());
+    let mut output: std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = std::result::Result<std::process::Output, std::io::Error>,
+                >,
+        >,
+    > = if spec.options.capture_stdout || spec.options.capture_stderr || spec.options.merge_stderr {
+        Box::pin(child.wait_with_output())
+    } else {
+        Box::pin(async {
+            let status = child.wait().await?;
+            Ok(std::process::Output {
+                status,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            })
+        })
+    };
     loop {
         if cancel_requested.get() {
             drop(output);
@@ -683,7 +711,7 @@ async fn run_process_async(spec: ProcRunSpec, cancel_requested: Rc<Cell<bool>>) 
                     &spec.command_parts,
                     &spec.options,
                     output,
-                ))
+                ));
             }
             Ok(Err(err)) => {
                 return Ok(process_error_result(

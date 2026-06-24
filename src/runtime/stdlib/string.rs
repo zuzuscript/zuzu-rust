@@ -366,165 +366,74 @@ fn sprint(runtime: &Runtime, args: &[Value]) -> Result<Value> {
             "sprint() expects at least one argument",
         ));
     }
-    let mut fmt = runtime.render_value(&args[0])?;
-    for arg in &args[1..] {
-        let rendered = runtime.render_value(arg)?;
-        if let Some((start, end, replacement)) = format_percent_placeholder(runtime, &fmt, arg)? {
-            fmt.replace_range(start..end, &replacement);
-            continue;
+
+    let fmt = runtime.render_value(&args[0])?;
+    let printf_args = args[1..]
+        .iter()
+        .map(|arg| ZuzuPrintfArg::new(runtime, arg))
+        .collect::<Result<Vec<_>>>()?;
+    let mut arg_refs = printf_args
+        .iter()
+        .map(|arg| arg as &dyn sprintf::Printf)
+        .collect::<Vec<_>>();
+
+    loop {
+        match sprintf::vsprintf(&fmt, &arg_refs) {
+            Ok(text) => return Ok(Value::String(text)),
+            Err(sprintf::PrintfError::TooManyArgs) if !arg_refs.is_empty() => {
+                arg_refs.pop();
+            }
+            Err(err) => {
+                return Err(ZuzuRustError::runtime(format!(
+                    "sprint() format failed: {err}"
+                )));
+            }
         }
-        if fmt.contains("{}") {
-            fmt = fmt.replacen("{}", &rendered, 1);
-            continue;
-        }
-        fmt.push_str(&rendered);
     }
-    Ok(Value::String(fmt))
 }
 
-fn format_percent_placeholder(
-    runtime: &Runtime,
-    fmt: &str,
-    arg: &Value,
-) -> Result<Option<(usize, usize, String)>> {
-    let chars: Vec<(usize, char)> = fmt.char_indices().collect();
-    let mut i = 0usize;
-    while i < chars.len() {
-        let (start, ch) = chars[i];
-        if ch != '%' {
-            i += 1;
-            continue;
-        }
-        if i + 1 < chars.len() && chars[i + 1].1 == '%' {
-            i += 2;
-            continue;
-        }
+struct ZuzuPrintfArg {
+    rendered: String,
+    number: Option<f64>,
+}
 
-        let mut j = i + 1;
-        let mut zero_pad = false;
-        if j < chars.len() && chars[j].1 == '0' {
-            zero_pad = true;
-            j += 1;
-        }
-
-        let width_start = j;
-        while j < chars.len() && chars[j].1.is_ascii_digit() {
-            j += 1;
-        }
-        let width = if j > width_start {
-            fmt[chars[width_start].0..chars[j].0].parse::<usize>().ok()
-        } else {
-            None
+impl ZuzuPrintfArg {
+    fn new(runtime: &Runtime, value: &Value) -> Result<Self> {
+        let rendered = runtime.render_value(value)?;
+        let number = match value {
+            Value::Number(number) => Some(*number),
+            _ => None,
         };
-
-        let mut precision = None;
-        if j < chars.len() && chars[j].1 == '.' {
-            j += 1;
-            let precision_start = j;
-            while j < chars.len() && chars[j].1.is_ascii_digit() {
-                j += 1;
-            }
-            precision = if j > precision_start {
-                fmt[chars[precision_start].0..chars[j].0]
-                    .parse::<usize>()
-                    .ok()
-            } else {
-                Some(0)
-            };
-        }
-
-        if j >= chars.len() {
-            break;
-        }
-
-        let spec = chars[j].1;
-        let end = if j + 1 < chars.len() {
-            chars[j + 1].0
-        } else {
-            fmt.len()
-        };
-
-        let replacement = match spec {
-            'c' => {
-                let code = runtime.value_to_number(arg)? as u32;
-                let value = char::from_u32(code).unwrap_or('\u{FFFD}').to_string();
-                pad_formatted(value, width, false)
-            }
-            'd' => {
-                let value = runtime.value_to_number(arg)? as i64;
-                format_integer(value, width, zero_pad)
-            }
-            'f' => {
-                let value = runtime.value_to_number(arg)?;
-                format_float(value, width, precision, zero_pad)
-            }
-            's' => {
-                let value = runtime.render_value(arg)?;
-                pad_formatted(value, width, false)
-            }
-            _ => {
-                i += 1;
-                continue;
-            }
-        };
-        return Ok(Some((start, end, replacement)));
-    }
-
-    Ok(None)
-}
-
-fn pad_formatted(value: String, width: Option<usize>, zero_pad: bool) -> String {
-    match width {
-        Some(width) if value.len() < width => {
-            let pad = if zero_pad { '0' } else { ' ' };
-            format!("{}{}", pad.to_string().repeat(width - value.len()), value)
-        }
-        _ => value,
+        Ok(Self { rendered, number })
     }
 }
 
-fn format_integer(value: i64, width: Option<usize>, zero_pad: bool) -> String {
-    let abs = value.abs().to_string();
-    match width {
-        Some(width) if zero_pad && value < 0 && abs.len() + 1 < width => {
-            format!("-{}{}", "0".repeat(width - abs.len() - 1), abs)
-        }
-        Some(width) if zero_pad && abs.len() < width => {
-            format!("{}{}", "0".repeat(width - abs.len()), abs)
-        }
-        Some(width) if abs.len() + usize::from(value < 0) < width => {
-            pad_formatted(value.to_string(), Some(width), false)
-        }
-        _ => value.to_string(),
-    }
-}
-
-fn format_float(
-    value: f64,
-    width: Option<usize>,
-    precision: Option<usize>,
-    zero_pad: bool,
-) -> String {
-    let base = match precision {
-        Some(precision) => format!("{value:.precision$}"),
-        None => value.to_string(),
-    };
-    match width {
-        Some(width) if zero_pad => {
-            if let Some(rest) = base.strip_prefix('-') {
-                if base.len() < width {
-                    format!("-{}{}", "0".repeat(width - base.len()), rest)
-                } else {
-                    base
+impl sprintf::Printf for ZuzuPrintfArg {
+    fn format(&self, spec: &sprintf::ConversionSpecifier) -> sprintf::Result<String> {
+        if let Some(number) = self.number {
+            match (number as i64).format(spec) {
+                Ok(text) => return Ok(text),
+                Err(sprintf::PrintfError::WrongType) => {}
+                Err(err) => return Err(err),
+            }
+            if number >= 0.0 {
+                match (number as u64).format(spec) {
+                    Ok(text) => return Ok(text),
+                    Err(sprintf::PrintfError::WrongType) => {}
+                    Err(err) => return Err(err),
                 }
-            } else if base.len() < width {
-                format!("{}{}", "0".repeat(width - base.len()), base)
-            } else {
-                base
+            }
+            match number.format(spec) {
+                Ok(text) => return Ok(text),
+                Err(sprintf::PrintfError::WrongType) => {}
+                Err(err) => return Err(err),
             }
         }
-        Some(width) => pad_formatted(base, Some(width), false),
-        None => base,
+        self.rendered.format(spec)
+    }
+
+    fn as_int(&self) -> Option<i32> {
+        self.number.map(|number| number as i32)
     }
 }
 

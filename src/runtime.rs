@@ -9698,6 +9698,13 @@ fn is_path_operator(operator: &str) -> bool {
 }
 
 fn render_number(value: f64) -> String {
+    if value.is_infinite() {
+        return if value.is_sign_negative() {
+            "-Inf".to_string()
+        } else {
+            "Inf".to_string()
+        };
+    }
     if value.fract() == 0.0 {
         if value >= i64::MIN as f64 && value <= i64::MAX as f64 {
             format!("{}", value as i64)
