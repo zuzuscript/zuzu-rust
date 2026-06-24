@@ -30,6 +30,8 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 - `switch` no longer executes the `default` block after a matched case unless
   fall-through was requested with `continue`.
+- `std/string.sprint` again accepts number-coercible values for numeric and
+  character printf conversions.
 - `say` now renders IEEE infinities as `Inf` and `-Inf`.
 - `std/proc` now inherits stdout/stderr when output capture is disabled for
   synchronous and asynchronous process runs.

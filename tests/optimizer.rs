@@ -511,6 +511,8 @@ fn optimizer_sensitive_stdlib_round_trips_pass_at_default_level() {
         "stdlib/tests/std/data/kdl/_loaddump.zzs",
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_zuzu-rust"))
+            .arg("-Istdlib/modules")
+            .arg("-Istdlib/test-modules")
             .arg(root.join(relative))
             .current_dir(&root)
             .output()

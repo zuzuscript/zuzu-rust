@@ -673,8 +673,8 @@ async fn run_process_async(spec: ProcRunSpec, cancel_requested: Rc<Cell<bool>>) 
     let mut output: std::pin::Pin<
         Box<
             dyn std::future::Future<
-                    Output = std::result::Result<std::process::Output, std::io::Error>,
-                >,
+                Output = std::result::Result<std::process::Output, std::io::Error>,
+            >,
         >,
     > = if spec.options.capture_stdout || spec.options.capture_stderr || spec.options.merge_stderr {
         Box::pin(child.wait_with_output())

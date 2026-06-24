@@ -400,10 +400,7 @@ struct ZuzuPrintfArg {
 impl ZuzuPrintfArg {
     fn new(runtime: &Runtime, value: &Value) -> Result<Self> {
         let rendered = runtime.render_value(value)?;
-        let number = match value {
-            Value::Number(number) => Some(*number),
-            _ => None,
-        };
+        let number = runtime.value_to_number(value).ok();
         Ok(Self { rendered, number })
     }
 }
@@ -411,6 +408,11 @@ impl ZuzuPrintfArg {
 impl sprintf::Printf for ZuzuPrintfArg {
     fn format(&self, spec: &sprintf::ConversionSpecifier) -> sprintf::Result<String> {
         if let Some(number) = self.number {
+            if spec.conversion_type == sprintf::ConversionType::Char {
+                let code = number as u32;
+                let ch = char::from_u32(code).unwrap_or('\u{FFFD}');
+                return ch.format(spec);
+            }
             match (number as i64).format(spec) {
                 Ok(text) => return Ok(text),
                 Err(sprintf::PrintfError::WrongType) => {}

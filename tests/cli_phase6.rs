@@ -468,6 +468,7 @@ fn cli_js_capability_is_always_denied_and_hides_javascript_module() {
 fn cli_deny_gui_allows_dialogue_tui_fallbacks() {
     let output = run_zuzu(
         &[
+            "-Istdlib/modules",
             "--deny=gui",
             "-e",
             concat!(
@@ -632,7 +633,7 @@ fn cli_lint_reports_unintuitive_logical_chains() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(
         stderr
-            .matches("unintuitive chained use of operator ⊼\n")
+            .matches("unintuitive chained use of operator ⊼ [UNINTLOG]\n")
             .count(),
         2
     );
@@ -640,12 +641,12 @@ fn cli_lint_reports_unintuitive_logical_chains() {
     assert!(stderr.contains("unintuitive chained use of operator ↔?"));
     assert!(stderr.contains("unintuitive chained use of operator ⊼?"));
     assert!(stderr.contains("unintuitive chained use of operator ⊽?"));
-    assert!(!stderr.contains("unintuitive chained use of operator ↔\n"));
-    assert!(!stderr.contains("unintuitive chained use of operator ⋀"));
-    assert!(!stderr.contains("unintuitive chained use of operator ⋁?"));
-    assert!(!stderr.contains("unintuitive chained use of operator ⊻?"));
-    assert!(!stderr.contains("unintuitive chained use of operator ⊨?"));
-    assert!(!stderr.contains("unintuitive chained use of operator ⊭?"));
+    assert!(!stderr.contains("unintuitive chained use of operator ↔ [UNINTLOG]"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⋀ [UNINTLOG]"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⋁? [UNINTLOG]"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⊻? [UNINTLOG]"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⊨? [UNINTLOG]"));
+    assert!(!stderr.contains("unintuitive chained use of operator ⊭? [UNINTLOG]"));
 }
 
 #[test]
@@ -811,10 +812,7 @@ fn cli_lint_allows_reason_text_and_for_block_directive() {
     let source =
         "from acme/tool import helper; function use_helper () { if (typeof helper() == \"String\") { } } // allow TYPEOF, TOPIMPORT because noise suppression";
 
-    let output = run_zuzu(
-        &["--lint", &include_arg, "-e", source],
-        &repo_root(),
-    );
+    let output = run_zuzu(&["--lint", &include_arg, "-e", source], &repo_root());
 
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout), "");

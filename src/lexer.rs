@@ -158,7 +158,7 @@ pub fn lex_with_comments(source: &str, preserve_comments: bool) -> Result<Vec<To
             }
             if preserve_comments {
                 let comment_text: String = chars[comment_start..i].iter().collect();
-                    tokens.push(Token::new(
+                tokens.push(Token::new(
                     TokenKind::Comment(comment_text),
                     Span::new(start, i, start_line, start_column),
                 ));

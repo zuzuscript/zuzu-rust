@@ -2,11 +2,11 @@ use crate::ast::{
     BlockStatement, CallArgument, CatchBinding, CatchClause, ClassDeclaration, ClassMember,
     DeclarationBindingEntry, DeclarationBindingPattern, DictEntry, DictKey, DieStatement,
     Expression, ExpressionStatement, FieldDeclaration, ForStatement, FunctionDeclaration,
-    IfStatement, ImportDeclaration, ImportSpecifier, KeywordStatement, LoopControlStatement,
-    MethodDeclaration, Parameter, PostfixCondition, PostfixConditionalStatement, Program,
-    ReturnStatement, Statement, SwitchCase, SwitchStatement, TemplatePart as AstTemplatePart,
-    ThrowStatement, TraitDeclaration, TryStatement, VariableDeclaration,
-    VariableUnpackDeclaration, WhileStatement, LintDirective,
+    IfStatement, ImportDeclaration, ImportSpecifier, KeywordStatement, LintDirective,
+    LoopControlStatement, MethodDeclaration, Parameter, PostfixCondition,
+    PostfixConditionalStatement, Program, ReturnStatement, Statement, SwitchCase, SwitchStatement,
+    TemplatePart as AstTemplatePart, ThrowStatement, TraitDeclaration, TryStatement,
+    VariableDeclaration, VariableUnpackDeclaration, WhileStatement,
 };
 use crate::error::{Result, ZuzuRustError};
 use crate::token::{TemplatePart as TokenTemplatePart, Token, TokenKind};
@@ -30,9 +30,7 @@ fn parse_lint_directives(tokens: &[Token]) -> Vec<LintDirective> {
         let inline = tokens
             .iter()
             .take(index)
-            .any(|token| {
-                token.span.line == line && !matches!(token.kind, TokenKind::Comment(_))
-            });
+            .any(|token| token.span.line == line && !matches!(token.kind, TokenKind::Comment(_)));
 
         directives.push(LintDirective {
             line,

@@ -4,11 +4,11 @@ use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use zuzu_rust::ast::{BlockStatement, ClassMember, LintDirective, Statement};
 use zuzu_rust::{
     module_search_roots, optimizer, parse_program_with_compile_options, OptimizationLevel,
     OptimizationOptions, ParseOptions, Result, Runtime, RuntimePolicy, ZuzuRustError,
 };
-use zuzu_rust::ast::{BlockStatement, ClassMember, LintDirective, Statement};
 
 fn main() -> ExitCode {
     match run() {
@@ -324,10 +324,7 @@ fn collect_block_spans(statements: &[Statement]) -> Vec<BlockSpan> {
     spans
 }
 
-fn collect_block_spans_from_statements(
-    statements: &[Statement],
-    spans: &mut Vec<BlockSpan>,
-) {
+fn collect_block_spans_from_statements(statements: &[Statement], spans: &mut Vec<BlockSpan>) {
     for statement in statements {
         collect_block_spans_from_statement(statement, spans);
     }
@@ -466,7 +463,11 @@ fn is_warning_suppressed(
     false
 }
 
-fn matches_block_span(block_spans: &[BlockSpan], directive_line: usize, warning_line: usize) -> bool {
+fn matches_block_span(
+    block_spans: &[BlockSpan],
+    directive_line: usize,
+    warning_line: usize,
+) -> bool {
     let next_line = directive_line + 1;
     for span in block_spans {
         if span.start == directive_line || span.start == next_line {

@@ -1097,6 +1097,27 @@ fn std_string_chr_ord_roundtrip_unicode_scalars() {
 }
 
 #[test]
+fn std_string_sprint_coerces_numeric_formats() {
+    let repo_root = repo_root();
+    let runtime = Runtime::new(vec![repo_root.join("stdlib").join("modules")]);
+
+    let output = runtime
+        .run_script_source(
+            r#"
+            from std/string import sprint;
+            say sprint("%c", 60);
+            say sprint("%04X", "60");
+            say sprint("%1.2f", "12.3");
+            say sprint("%s", [1, 2]);
+            "#,
+        )
+        .expect("std/string sprint should coerce numeric formats");
+
+    assert_eq!(output.stdout, "<\n003C\n12.30\n[1, 2]\n");
+    assert_eq!(output.stderr, "");
+}
+
+#[test]
 fn runs_switch_ztest_scripts() {
     let repo_root = repo_root();
     let switch_output = Runtime::new(vec![repo_root.join("stdlib").join("modules")])
