@@ -9,6 +9,8 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ### Added
 
+- Added `std/string.repeat` for repeating `String` or `BinaryString` values
+  with optional same-type separators.
 - Switch case and default bodies now have access to the active switch value
   via `^^`, including when falling through multiple case sections.
 - `--lint` now reports top-level imported symbols that are never referenced

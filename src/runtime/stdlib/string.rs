@@ -27,6 +27,7 @@ pub(super) fn exports() -> HashMap<String, Value> {
         "search",
         "matches",
         "sprint",
+        "repeat",
         "split",
         "pattern_to_regexp",
         "quotemeta",
@@ -80,6 +81,7 @@ pub(super) fn call(runtime: &Runtime, name: &str, args: &[Value]) -> Option<Resu
         "replace" => replace(runtime, args),
         "quotemeta" => quotemeta(runtime, args),
         "sprint" => sprint(runtime, args),
+        "repeat" => repeat(runtime, args),
         "split" => split(runtime, args),
         _ => return None,
     };
@@ -390,6 +392,51 @@ fn sprint(runtime: &Runtime, args: &[Value]) -> Result<Value> {
             }
         }
     }
+}
+
+fn repeat(runtime: &Runtime, args: &[Value]) -> Result<Value> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err(ZuzuRustError::runtime(
+            "repeat() expects two or three arguments",
+        ));
+    }
+
+    let count = runtime.value_to_number(&args[0])?;
+    if count < 0.0 {
+        return Err(ZuzuRustError::runtime("repeat() count cannot be negative"));
+    }
+    let repetitions = count.floor() as usize;
+
+    let text_is_binary = matches!(&args[1], Value::BinaryString(_));
+    let separator_is_binary = matches!(args.get(2), Some(Value::BinaryString(_)));
+    if args.get(2).is_some() && text_is_binary != separator_is_binary {
+        return Err(ZuzuRustError::runtime(
+            "TypeException: repeat() cannot mix String and BinaryString values",
+        ));
+    }
+
+    if let Value::BinaryString(bytes) = &args[1] {
+        let separator = match args.get(2) {
+            Some(Value::BinaryString(bytes)) => bytes.as_slice(),
+            _ => &[],
+        };
+        let mut out = Vec::new();
+        for index in 0..repetitions {
+            if index > 0 {
+                out.extend_from_slice(separator);
+            }
+            out.extend_from_slice(bytes);
+        }
+        return Ok(Value::BinaryString(out));
+    }
+
+    let text = runtime.render_value(&args[1])?;
+    let separator = args
+        .get(2)
+        .map(|value| runtime.render_value(value))
+        .transpose()?
+        .unwrap_or_default();
+    Ok(Value::String(vec![text; repetitions].join(&separator)))
 }
 
 struct ZuzuPrintfArg {
