@@ -1556,8 +1556,8 @@ impl Runtime {
         let source = self.eval_expression(&node.init, Rc::clone(&env))?;
         let source_value = self.deref_value(&source)?;
         let mut resolved = Vec::new();
-        for entry in node.pattern.entries() {
-            let value = self.resolve_unpack_entry(entry, &source_value, Rc::clone(&env))?;
+        for (index, entry) in node.pattern.entries().iter().enumerate() {
+            let value = self.resolve_unpack_entry(entry, index, &source_value, Rc::clone(&env))?;
             if entry.runtime_typecheck_required != Some(false) {
                 self.assert_declared_type(entry.declared_type.as_deref(), &value, &entry.name)?;
             }
@@ -1577,19 +1577,26 @@ impl Runtime {
     fn resolve_unpack_entry(
         &self,
         entry: &DeclarationBindingEntry,
+        index: usize,
         source: &Value,
         env: Rc<Environment>,
     ) -> Result<Value> {
-        let key = self.eval_dict_key(&entry.key, Rc::clone(&env))?;
         let value = match source {
-            Value::Dict(map) | Value::SystemDict(map) => map.get(&key).cloned(),
-            Value::PairList(values) => values
-                .iter()
-                .find(|(entry_key, _)| entry_key == &key)
-                .map(|(_, value)| value.clone()),
+            Value::Array(values) | Value::SystemArray(values) => values.get(index).cloned(),
+            Value::Dict(map) | Value::SystemDict(map) => {
+                let key = self.eval_dict_key(&entry.key, Rc::clone(&env))?;
+                map.get(&key).cloned()
+            }
+            Value::PairList(values) => {
+                let key = self.eval_dict_key(&entry.key, Rc::clone(&env))?;
+                values
+                    .iter()
+                    .find(|(entry_key, _)| entry_key == &key)
+                    .map(|(_, value)| value.clone())
+            }
             other => {
                 return Err(ZuzuRustError::runtime(format!(
-                    "Declaration unpacking expects Dict or PairList, got {}",
+                    "Declaration unpacking expects Dict, PairList, or Array, got {}",
                     other.type_name()
                 )))
             }
@@ -2709,6 +2716,10 @@ impl Runtime {
                         value => self.value_to_operator_string(&value)?.chars().count() as f64,
                     },
                 )),
+                "#" => {
+                    let value = self.eval_expression(argument, env)?;
+                    self.cardinality_value(value)
+                }
                 "typeof" => Ok(Value::String(
                     self.typeof_name(&self.eval_expression(argument, env)?),
                 )),
@@ -7806,6 +7817,42 @@ impl Runtime {
         }
     }
 
+    fn cardinality_value(&self, value: Value) -> Result<Value> {
+        let value = self.deref_value(&value)?;
+        match value {
+            Value::Array(values)
+            | Value::SystemArray(values)
+            | Value::Set(values)
+            | Value::Bag(values) => Ok(Value::Number(values.len() as f64)),
+            Value::Dict(values) | Value::SystemDict(values) => {
+                Ok(Value::Number(values.len() as f64))
+            }
+            Value::PairList(values) => Ok(Value::Number(values.len() as f64)),
+            Value::Object(object) => {
+                let class = Rc::clone(&object.borrow().class);
+                if let Some(method) = self.find_method(&class, "count") {
+                    return self.invoke_object_method_with_context(
+                        &object,
+                        class,
+                        "count",
+                        &method,
+                        &[],
+                        Vec::new(),
+                    );
+                }
+                self.length_fallback_value(Value::Object(object))
+            }
+            value => self.length_fallback_value(value),
+        }
+    }
+
+    fn length_fallback_value(&self, value: Value) -> Result<Value> {
+        Ok(Value::Number(match value {
+            Value::BinaryString(bytes) => bytes.len() as f64,
+            value => self.value_to_operator_string(&value)?.chars().count() as f64,
+        }))
+    }
+
     fn collect_method_candidates(
         &self,
         class: &Rc<UserClassValue>,
@@ -8060,6 +8107,15 @@ impl Runtime {
                 }
                 return self.call_method_named(&mut builtin_value, name, args, named_args);
             }
+            if let Some(result) = self.call_missing_method_fallback(
+                object,
+                Rc::clone(&class),
+                name,
+                args,
+                named_args,
+            )? {
+                return Ok(result);
+            }
             return Err(ZuzuRustError::thrown(format!(
                 "unsupported method '{}' for {}",
                 name, class.name
@@ -8067,6 +8123,33 @@ impl Runtime {
         };
 
         self.invoke_object_method_with_context(object, class, name, &method, args, named_args)
+    }
+
+    fn call_missing_method_fallback(
+        &self,
+        object: &Rc<RefCell<ObjectValue>>,
+        class: Rc<UserClassValue>,
+        name: &str,
+        args: &[Value],
+        named_args: Vec<(String, Value)>,
+    ) -> Result<Option<Value>> {
+        let Some(method) = self.find_method(&class, "__call__") else {
+            return Ok(None);
+        };
+        let fallback_args = vec![
+            Value::String(name.to_owned()),
+            Value::Array(args.to_vec()),
+            Value::PairList(named_args),
+        ];
+        self.invoke_object_method_with_context(
+            object,
+            class,
+            "__call__",
+            &method,
+            &fallback_args,
+            Vec::new(),
+        )
+        .map(Some)
     }
 
     fn object_set_field(

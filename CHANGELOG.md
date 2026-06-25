@@ -9,6 +9,13 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ### Added
 
+- Added the `#value` cardinality prefix operator, which calls a concrete
+  `count()` method when available and otherwise follows `length` semantics.
+- Declaration destructuring now accepts Array sources and binds entries by
+  position while preserving defaults, type checks, and weak storage.
+- User-defined classes can now define `__call__(String name, Array args,
+  PairList opts)` as a fallback for missing method calls, after ordinary
+  direct, inherited, and trait-supplied method lookup.
 - Added `std/string.repeat` for repeating `String` or `BinaryString` values
   with optional same-type separators.
 - Switch case and default bodies now have access to the active switch value

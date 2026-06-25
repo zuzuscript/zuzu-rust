@@ -1205,7 +1205,7 @@ impl Parser {
             TokenKind::Operator(op) if op == "->" => self.parse_arrow_lambda_expression(),
             TokenKind::Keyword("async") => self.parse_async_expression(),
             TokenKind::Operator(op)
-                if ["+", "-", "!", "~", "++", "--", "¬", "√", "\\"].contains(&op.as_str()) =>
+                if ["+", "-", "!", "~", "#", "++", "--", "¬", "√", "\\"].contains(&op.as_str()) =>
             {
                 let operator = op.clone();
                 self.advance();
