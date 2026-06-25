@@ -7,6 +7,8 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
 
 ## Unreleased
 
+*stdlib tag 20260625, languagetests tag 20260625.*
+
 ### Added
 
 - Added the `#value` cardinality prefix operator, which calls a concrete
@@ -41,7 +43,8 @@ and this project roughly adheres to [Semantic Versioning](https://semver.org/spe
   fall-through was requested with `continue`.
 - `std/string.sprint` again accepts number-coercible values for numeric and
   character printf conversions.
-- `say` now renders IEEE infinities as `Inf` and `-Inf`.
+- `say` now renders IEEE infinities as `Inf` and `-Inf` instead of using
+  lowercase.
 - `std/proc` now inherits stdout/stderr when output capture is disabled for
   synchronous and asynchronous process runs.
 - Runtime module search no longer probes source-checkout directories such as
