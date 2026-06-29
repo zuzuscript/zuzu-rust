@@ -51,7 +51,8 @@ Use `nice` for compile-heavy checks:
 ```bash
 nice -n 10 cargo check
 nice -n 10 cargo test
-nice -n 10 cargo run --bin zuzu-rust-run-tests -- languagetests stdlib/tests
+nice -n 10 cargo run --bin zuzu-rust-run-tests -- \
+  -Istdlib/modules -Istdlib/test-modules languagetests stdlib/tests
 ```
 
 Ztests emit TAP. A passing ztest should emit a valid plan, no `not ok`

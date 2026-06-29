@@ -159,7 +159,8 @@ nice -n 10 cargo test
 For shared ZuzuScript standard-library tests:
 
 ```sh
-nice -n 10 cargo run --bin zuzu-rust-run-tests -- languagetests stdlib/tests
+nice -n 10 cargo run --bin zuzu-rust-run-tests -- \
+  -Istdlib/modules -Istdlib/test-modules languagetests stdlib/tests
 ```
 
 ## Project Status
